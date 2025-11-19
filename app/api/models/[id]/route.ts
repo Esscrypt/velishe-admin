@@ -12,6 +12,12 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
+    const modelId = Number.parseInt(id, 10);
+    
+    if (Number.isNaN(modelId)) {
+      return NextResponse.json({ error: "Invalid model ID" }, { status: 400 });
+    }
+    
     const db = getDb();
     
     // Single query with LEFT JOIN
@@ -32,7 +38,7 @@ export async function GET(
       })
       .from(schema.models)
       .leftJoin(schema.images, eq(schema.models.id, schema.images.modelId))
-      .where(eq(schema.models.id, id))
+      .where(eq(schema.models.id, modelId))
       .orderBy(asc(schema.images.order));
 
     if (rows.length === 0) {
@@ -97,6 +103,12 @@ export async function PUT(
 
   try {
     const { id } = await params;
+    const modelId = Number.parseInt(id, 10);
+    
+    if (Number.isNaN(modelId)) {
+      return NextResponse.json({ error: "Invalid model ID" }, { status: 400 });
+    }
+    
     const db = getDb();
     // Use the body from auth middleware (body is already parsed)
     const body = authResult.body!;
@@ -113,7 +125,7 @@ export async function PUT(
         instagram: modelData.instagram || null,
         featuredImage: modelData.featuredImage || null,
       })
-      .where(eq(schema.models.id, id))
+      .where(eq(schema.models.id, modelId))
       .returning();
     
     // If gallery is provided, update images
@@ -122,7 +134,7 @@ export async function PUT(
       const existingImages = await db
         .select()
         .from(schema.images)
-        .where(eq(schema.images.modelId, id));
+        .where(eq(schema.images.modelId, modelId));
       
       const existingImageIds = new Set(existingImages.map((img) => img.id));
       const providedImageIds = new Set(
@@ -165,7 +177,7 @@ export async function PUT(
           // Insert new image (with base64 data if provided)
           await db.insert(schema.images).values({
             id: imageId,
-            modelId: Number.parseInt(id, 10),
+            modelId: modelId,
             type: img.type || "image",
             src: img.src || "",
             alt: img.alt || "",
@@ -202,12 +214,18 @@ export async function DELETE(
 
   try {
     const { id } = await params;
+    const modelId = Number.parseInt(id, 10);
+    
+    if (Number.isNaN(modelId)) {
+      return NextResponse.json({ error: "Invalid model ID" }, { status: 400 });
+    }
+    
     const db = getDb();
     // DELETE doesn't need body, but we could use authResult.body if needed
 
     const deleted = await db
       .delete(schema.models)
-      .where(eq(schema.models.id, id))
+      .where(eq(schema.models.id, modelId))
       .returning();
 
     if (deleted.length === 0) {
