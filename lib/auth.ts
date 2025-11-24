@@ -3,13 +3,13 @@ import { config } from "dotenv";
 import { createHash } from "node:crypto";
 
 // Load .env.local first (takes precedence), then .env
-// Disable variable substitution to prevent $ from being interpreted as variables
-config({ path: ".env.local", processEnv: {} });
-config({ processEnv: {} });
+config({ path: ".env.local" });
+config();
 
-// Function to get the password hash (allows for runtime updates)
-function getAdminPasswordHash(): string | undefined {
-  return process.env.ADMIN_PASSWORD_HASH;
+const ADMIN_PASSWORD_HASH = process.env.ADMIN_PASSWORD_HASH;
+
+if (!ADMIN_PASSWORD_HASH) {
+  console.warn("ADMIN_PASSWORD_HASH not set in environment variables");
 }
 
 /**
@@ -24,24 +24,14 @@ export function hashPasswordClient(password: string): string {
  * The client sends a SHA-256 hash, which we then hash with bcrypt and compare
  */
 export async function verifyPasswordHash(passwordHash: string): Promise<boolean> {
-  const adminPasswordHash = getAdminPasswordHash();
-  
-  if (!adminPasswordHash) {
+  if (!ADMIN_PASSWORD_HASH) {
     console.error("ADMIN_PASSWORD_HASH not configured");
     return false;
   }
 
   try {
     // The ADMIN_PASSWORD_HASH should be a bcrypt hash of the SHA-256 hash
-    const isValid = await bcrypt.compare(passwordHash, adminPasswordHash);
-    
-    if (!isValid) {
-      console.error("Password hash verification failed");
-      console.error("  Provided hash:", passwordHash);
-      console.error("  Stored hash:", adminPasswordHash.substring(0, 20) + "...");
-    }
-    
-    return isValid;
+    return await bcrypt.compare(passwordHash, ADMIN_PASSWORD_HASH);
   } catch (error) {
     console.error("Error verifying password hash:", error);
     return false;

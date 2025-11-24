@@ -14,8 +14,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const db = getDb();
-    // Use the body from auth middleware (body is already parsed)
-    const body = authResult.body!;
+    const body = await request.json();
     const { modelId, orderedImageIds } = body as { 
       modelId: string; 
       orderedImageIds: string[] 

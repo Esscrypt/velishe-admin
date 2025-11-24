@@ -112,8 +112,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const db = getDb();
-    // Use the body from auth middleware (body is already parsed)
-    const body = authResult.body!;
+    const body = await request.json();
     
     // Remove passwordHash and id from body before processing (id is auto-generated)
     const { passwordHash, id, ...modelData } = body;

@@ -87,6 +87,7 @@ function SortableItem({ model, onEdit, onDelete }: Readonly<{ model: Model; onEd
       <div className="flex-1">
         <h3 className="font-semibold text-lg">{model.name}</h3>
         <p className="text-sm text-gray-600">Slug: {model.slug}</p>
+        <p className="text-sm text-gray-600">ID: {model.id}</p>
       </div>
       <div className="flex gap-2">
         <Button
@@ -261,7 +262,6 @@ export default function AdminPage() {
             model={editingModel}
             onClose={handleFormClose}
             onSave={handleFormClose}
-            password={password}
           />
         )}
 

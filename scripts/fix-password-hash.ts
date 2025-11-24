@@ -24,9 +24,7 @@ async function main() {
   }
   
   // Update or add ADMIN_PASSWORD_HASH
-  // Escape $ characters to prevent dotenv from interpreting them as variables
-  const escapedHash = hash.replace(/\$/g, "\\$");
-  const hashLine = `ADMIN_PASSWORD_HASH=${escapedHash}`;
+  const hashLine = `ADMIN_PASSWORD_HASH=${hash}`;
   
   if (envContent.includes("ADMIN_PASSWORD_HASH=")) {
     // Replace existing line
