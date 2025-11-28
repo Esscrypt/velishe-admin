@@ -9,13 +9,14 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  // Verify password
-  const authResult = await verifyAuth(request);
-  if (!authResult.authorized) {
-    return authResult.response!;
-  }
-
   try {
+    const body = await request.json();
+    
+    // Verify password using parsed body
+    const authResult = await verifyAuth(body);
+    if (!authResult.authorized) {
+      return authResult.response!;
+    }
     const { id } = await params;
     const db = getDb();
 

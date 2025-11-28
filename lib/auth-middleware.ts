@@ -4,13 +4,21 @@ import { verifyPasswordHash } from "./auth";
 /**
  * Middleware to verify password hash from request body
  * Expects a passwordHash field (SHA-256 hash from client)
+ * Can accept either a NextRequest (will parse body) or a parsed body object
  */
-export async function verifyAuth(request: NextRequest): Promise<{
+export async function verifyAuth(
+  requestOrBody: NextRequest | { passwordHash?: string }
+): Promise<{
   authorized: boolean;
   response?: NextResponse;
+  body?: any;
 }> {
   try {
-    const body = await request.json();
+    // If it's a request, parse the body. Otherwise, use the provided body.
+    const body = requestOrBody instanceof NextRequest
+      ? await requestOrBody.json()
+      : requestOrBody;
+    
     const passwordHash = body.passwordHash;
 
     if (!passwordHash) {
@@ -34,7 +42,7 @@ export async function verifyAuth(request: NextRequest): Promise<{
       };
     }
 
-    return { authorized: true };
+    return { authorized: true, body };
   } catch (error) {
     console.error("Error verifying auth:", error);
     return {

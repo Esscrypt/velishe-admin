@@ -95,13 +95,15 @@ export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  // Verify password
-  const authResult = await verifyAuth(request);
-  if (!authResult.authorized) {
-    return authResult.response!;
-  }
-
   try {
+    const body = await request.json();
+    
+    // Verify password using parsed body
+    const authResult = await verifyAuth(body);
+    if (!authResult.authorized) {
+      return authResult.response!;
+    }
+    
     const { id } = await params;
     const modelId = Number.parseInt(id, 10);
     
@@ -110,8 +112,6 @@ export async function PUT(
     }
     
     const db = getDb();
-    // Use the body from auth middleware (body is already parsed)
-    const body = authResult.body!;
     
     // Remove passwordHash from body before processing
     const { passwordHash, ...modelData } = body;
@@ -206,13 +206,15 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  // Verify password
-  const authResult = await verifyAuth(request);
-  if (!authResult.authorized) {
-    return authResult.response!;
-  }
-
   try {
+    const body = await request.json();
+    
+    // Verify password using parsed body
+    const authResult = await verifyAuth(body);
+    if (!authResult.authorized) {
+      return authResult.response!;
+    }
+    
     const { id } = await params;
     const modelId = Number.parseInt(id, 10);
     
@@ -221,7 +223,6 @@ export async function DELETE(
     }
     
     const db = getDb();
-    // DELETE doesn't need body, but we could use authResult.body if needed
 
     const deleted = await db
       .delete(schema.models)

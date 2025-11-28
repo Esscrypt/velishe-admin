@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDb, schema, eq, asc } from "@/lib/db";
+import type { ModelInsert } from "@/lib/db/schema";
 import { verifyAuth } from "@/lib/auth-middleware";
 import { config } from "dotenv";
 import { randomUUID } from "node:crypto";
@@ -20,10 +21,6 @@ export async function GET() {
   // GET doesn't require auth (read-only)
   try {
     const db = getDb();
-    if (!db) {
-      // Database not configured, return empty array
-      return NextResponse.json([]);
-    }
     
     // Single query with LEFT JOIN to get all models with their images
     const rows = await db
@@ -50,6 +47,8 @@ export async function GET() {
     const modelsMap = new Map<number, any>();
     
     for (const row of rows) {
+      if (!row.modelId) continue; // Skip rows without modelId
+      
       if (!modelsMap.has(row.modelId)) {
         // Use base64 data if available, otherwise use featuredImage as-is
         let featuredImageSrc = row.featuredImage || "";
@@ -59,14 +58,28 @@ export async function GET() {
             : featuredImageSrc;
         }
         
+        // Ensure stats is always an object
+        let stats = row.stats;
+        if (!stats || typeof stats !== 'object' || Array.isArray(stats)) {
+          stats = {
+            height: "",
+            bust: "",
+            waist: "",
+            hips: "",
+            shoeSize: "",
+            hairColor: "",
+            eyeColor: "",
+          };
+        }
+        
         modelsMap.set(row.modelId, {
           id: String(row.modelId), // Convert to string for frontend
-          slug: row.slug,
-          name: row.name,
-          stats: row.stats,
+          slug: row.slug || "",
+          name: row.name || "",
+          stats: stats,
           instagram: row.instagram || undefined,
           featuredImage: featuredImageSrc,
-          displayOrder: row.displayOrder,
+          displayOrder: row.displayOrder ?? 0,
           gallery: [],
         });
       }
@@ -98,21 +111,27 @@ export async function GET() {
     return NextResponse.json(models);
   } catch (error) {
     console.error("Error fetching models:", error);
+    if (error instanceof Error) {
+      console.error("Error message:", error.message);
+      console.error("Error stack:", error.stack);
+    }
     // Return empty array instead of error object to prevent frontend issues
     return NextResponse.json([]);
   }
 }
 
 export async function POST(request: NextRequest) {
-  // Verify password
-  const authResult = await verifyAuth(request);
-  if (!authResult.authorized) {
-    return authResult.response!;
-  }
-
   try {
-    const db = getDb();
+    // Parse body once
     const body = await request.json();
+    
+    // Verify password using parsed body
+    const authResult = await verifyAuth(body);
+    if (!authResult.authorized) {
+      return authResult.response!;
+    }
+    
+    const db = getDb();
     
     // Remove passwordHash and id from body before processing (id is auto-generated)
     const { passwordHash, id, ...modelData } = body;
@@ -157,9 +176,9 @@ export async function POST(request: NextRequest) {
         name: modelData.name,
         stats: modelData.stats,
         instagram: modelData.instagram || null,
-        featuredImage: modelData.featuredImage || null, // Base64 data URI
+        featuredImage: modelData.featuredImage || null,
         displayOrder: maxOrder + 1,
-      })
+      } as ModelInsert)
       .returning();
 
     const modelId = newModel[0].id;

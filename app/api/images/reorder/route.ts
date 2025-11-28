@@ -6,15 +6,16 @@ import { config } from "dotenv";
 config();
 
 export async function POST(request: NextRequest) {
-  // Verify password
-  const authResult = await verifyAuth(request);
-  if (!authResult.authorized) {
-    return authResult.response!;
-  }
-
   try {
-    const db = getDb();
     const body = await request.json();
+    
+    // Verify password using parsed body
+    const authResult = await verifyAuth(body);
+    if (!authResult.authorized) {
+      return authResult.response!;
+    }
+
+    const db = getDb();
     const { modelId, orderedImageIds } = body as { 
       modelId: string; 
       orderedImageIds: string[] 

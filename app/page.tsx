@@ -3,9 +3,8 @@
 import { useEffect, useState } from "react";
 import { Plus, Edit, Trash2, GripVertical } from "lucide-react";
 import ModelForm from "@/components/ModelForm";
-import { hashPassword } from "@/lib/client-auth";
+import PasswordDialog, { getCachedPasswordHash, getCachedPassword, clearCachedPasswordHash } from "@/components/PasswordDialog";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { CSS } from "@dnd-kit/utilities";
 import {
   DndContext,
@@ -115,7 +114,10 @@ export default function AdminPage() {
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editingModel, setEditingModel] = useState<Model | null>(null);
-  const [password, setPassword] = useState("");
+  const [showPasswordDialog, setShowPasswordDialog] = useState(false);
+  const [passwordDialogAction, setPasswordDialogAction] = useState<((passwordHash: string) => void) | null>(null);
+  const [passwordDialogTitle, setPasswordDialogTitle] = useState("Admin Authentication");
+  const [passwordDialogDescription, setPasswordDialogDescription] = useState("Please enter your admin password to continue.");
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -142,17 +144,8 @@ export default function AdminPage() {
     fetchModels();
   }, []);
 
-  const handleDelete = async (id: string) => {
-    if (!confirm("Are you sure you want to delete this model?")) return;
-
-    if (!password) {
-      const pwd = prompt("Enter admin password:");
-      if (!pwd) return;
-      setPassword(pwd);
-    }
-
+  const performDelete = async (id: string, passwordHash: string) => {
     try {
-      const passwordHash = await hashPassword(password);
       const response = await fetch(`/api/models/${id}`, {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
@@ -161,10 +154,13 @@ export default function AdminPage() {
 
       if (response.ok) {
         fetchModels();
-        setPassword(""); // Clear password after successful operation
       } else {
         const error = await response.json();
         alert(`Failed to delete model: ${error.error || "Unknown error"}`);
+        // Clear cache on auth failure
+        if (response.status === 401) {
+          clearCachedPasswordHash();
+        }
       }
     } catch (error) {
       console.error("Error deleting model:", error);
@@ -172,9 +168,52 @@ export default function AdminPage() {
     }
   };
 
+  const handleDelete = async (id: string) => {
+    if (!confirm("Are you sure you want to delete this model?")) return;
+
+    const cachedHash = getCachedPasswordHash();
+    if (cachedHash) {
+      await performDelete(id, cachedHash);
+      return;
+    }
+
+    // Show password dialog
+    setPasswordDialogTitle("Delete Model");
+    setPasswordDialogDescription("Please enter your admin password to delete this model.");
+    setPasswordDialogAction(() => (hash: string) => performDelete(id, hash));
+    setShowPasswordDialog(true);
+  };
+
   const handleEdit = (model: Model) => {
-    setEditingModel(model);
-    setShowForm(true);
+    const cachedHash = getCachedPasswordHash();
+    if (cachedHash) {
+      setEditingModel(model);
+      setShowForm(true);
+    } else {
+      setPasswordDialogTitle("Edit Model");
+      setPasswordDialogDescription("Please enter your admin password to edit this model.");
+      setPasswordDialogAction(() => () => {
+        setEditingModel(model);
+        setShowForm(true);
+      });
+      setShowPasswordDialog(true);
+    }
+  };
+
+  const handleAddModel = () => {
+    const cachedHash = getCachedPasswordHash();
+    if (cachedHash) {
+      setEditingModel(null);
+      setShowForm(true);
+    } else {
+      setPasswordDialogTitle("Add Model");
+      setPasswordDialogDescription("Please enter your admin password to add a new model.");
+      setPasswordDialogAction(() => () => {
+        setEditingModel(null);
+        setShowForm(true);
+      });
+      setShowPasswordDialog(true);
+    }
   };
 
   const handleFormClose = () => {
@@ -183,44 +222,50 @@ export default function AdminPage() {
     fetchModels();
   };
 
+  const performReorder = async (orderedIds: string[], passwordHash: string) => {
+    try {
+      const response = await fetch("/api/models/reorder", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderedIds, passwordHash }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        alert(`Failed to reorder: ${error.error || "Unknown error"}`);
+        fetchModels(); // Revert on error
+        // Clear cache on auth failure
+        if (response.status === 401) {
+          clearCachedPasswordHash();
+        }
+      }
+    } catch (error) {
+      console.error("Error reordering models:", error);
+      fetchModels(); // Revert on error
+    }
+  };
+
   const handleDragEnd = async (event: any) => {
     const { active, over } = event;
 
     if (active.id !== over?.id) {
-      if (!password) {
-        const pwd = prompt("Enter admin password to reorder:");
-        if (!pwd) {
-          fetchModels(); // Revert UI
-          return;
-        }
-        setPassword(pwd);
-      }
-
       const oldIndex = models.findIndex((m) => m.id === active.id);
       const newIndex = models.findIndex((m) => m.id === over.id);
 
       const newModels = arrayMove(models, oldIndex, newIndex);
       setModels(newModels);
 
-      // Update order in database
-      try {
-        const passwordHash = await hashPassword(password);
-        const orderedIds = newModels.map((m) => m.id);
-        const response = await fetch("/api/models/reorder", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ orderedIds, passwordHash }),
-        });
-
-        if (!response.ok) {
-          const error = await response.json();
-          alert(`Failed to reorder: ${error.error || "Unknown error"}`);
-          fetchModels(); // Revert on error
-        }
-      } catch (error) {
-        console.error("Error reordering models:", error);
-        fetchModels(); // Revert on error
+      const cachedHash = getCachedPasswordHash();
+      if (cachedHash) {
+        await performReorder(newModels.map((m) => m.id), cachedHash);
+        return;
       }
+
+      // Show password dialog
+      setPasswordDialogTitle("Reorder Models");
+      setPasswordDialogDescription("Please enter your admin password to save the new order.");
+      setPasswordDialogAction(() => (hash: string) => performReorder(newModels.map((m) => m.id), hash));
+      setShowPasswordDialog(true);
     }
   };
 
@@ -232,25 +277,20 @@ export default function AdminPage() {
     );
   }
 
+  const handlePasswordSuccess = (passwordHash: string) => {
+    if (passwordDialogAction) {
+      passwordDialogAction(passwordHash);
+      setPasswordDialogAction(null);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gray-50 p-8">
       <div className="max-w-6xl mx-auto">
         <div className="flex justify-between items-center mb-8">
           <h1 className="text-3xl font-bold">Models Admin</h1>
           <div className="flex items-center gap-4">
-            <Input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="Admin password"
-              className="w-48"
-            />
-            <Button
-              onClick={() => {
-                setEditingModel(null);
-                setShowForm(true);
-              }}
-            >
+            <Button onClick={handleAddModel}>
               <Plus className="w-5 h-5" />
               Add Model
             </Button>
@@ -262,6 +302,7 @@ export default function AdminPage() {
             model={editingModel}
             onClose={handleFormClose}
             onSave={handleFormClose}
+            password={getCachedPassword() || ""}
           />
         )}
 
@@ -291,6 +332,17 @@ export default function AdminPage() {
           </SortableContext>
         </DndContext>
       </div>
+
+      <PasswordDialog
+        open={showPasswordDialog}
+        onClose={() => {
+          setShowPasswordDialog(false);
+          setPasswordDialogAction(null);
+        }}
+        onSuccess={handlePasswordSuccess}
+        title={passwordDialogTitle}
+        description={passwordDialogDescription}
+      />
     </div>
   );
 }

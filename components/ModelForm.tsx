@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { hashPassword } from "@/lib/client-auth";
+import PasswordDialog, { getCachedPassword, getCachedPasswordHash } from "@/components/PasswordDialog";
 import {
   Dialog,
   DialogContent,
@@ -61,7 +62,7 @@ interface ModelFormProps {
   model?: Model | null;
   onClose: () => void;
   onSave: () => void;
-  password: string;
+  password?: string;
 }
 
 function SortableGalleryItem({
@@ -277,25 +278,28 @@ function SortableImageItem({
   );
 }
 
-export default function ModelForm({ model, onClose, onSave, password }: Readonly<ModelFormProps>) {
+export default function ModelForm({ model, onClose, onSave, password: initialPassword }: Readonly<ModelFormProps>) {
   const [formData, setFormData] = useState({
     id: model?.id || "",
     slug: model?.slug || "",
     name: model?.name || "",
     stats: {
-      height: model?.stats.height || "",
-      bust: model?.stats.bust || "",
-      waist: model?.stats.waist || "",
-      hips: model?.stats.hips || "",
-      shoeSize: model?.stats.shoeSize || "",
-      hairColor: model?.stats.hairColor || "",
-      eyeColor: model?.stats.eyeColor || "",
+      height: model?.stats?.height || "",
+      bust: model?.stats?.bust || "",
+      waist: model?.stats?.waist || "",
+      hips: model?.stats?.hips || "",
+      shoeSize: model?.stats?.shoeSize || "",
+      hairColor: model?.stats?.hairColor || "",
+      eyeColor: model?.stats?.eyeColor || "",
     },
     instagram: model?.instagram || "",
     featuredImage: model?.featuredImage || "",
     gallery: model?.gallery || [],
   });
 
+  const [password, setPassword] = useState(initialPassword || "");
+  const [showPasswordDialog, setShowPasswordDialog] = useState(false);
+  const [pendingAction, setPendingAction] = useState<(() => void) | null>(null);
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [images, setImages] = useState<Array<{ 
@@ -723,11 +727,39 @@ export default function ModelForm({ model, onClose, onSave, password }: Readonly
     }
   };
 
+  const handlePasswordSuccess = (passwordHash: string) => {
+    // Get the actual password from cache
+    const cachedPassword = getCachedPassword();
+    if (cachedPassword) {
+      setPassword(cachedPassword);
+      setShowPasswordDialog(false);
+      if (pendingAction) {
+        pendingAction();
+        setPendingAction(null);
+      }
+    }
+  };
+
+  const requestPassword = (action: () => void) => {
+    const cachedPassword = getCachedPassword();
+    if (cachedPassword) {
+      setPassword(cachedPassword);
+      action();
+    } else {
+      setPendingAction(() => action);
+      setShowPasswordDialog(true);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
     if (!password) {
-      alert("Please enter the admin password in the field at the top of the page");
+      requestPassword(() => {
+        // Re-trigger submit after password is set
+        const form = e.target as HTMLFormElement;
+        form.requestSubmit();
+      });
       return;
     }
 
@@ -1280,6 +1312,17 @@ export default function ModelForm({ model, onClose, onSave, password }: Readonly
           </DialogFooter>
         </form>
       </DialogContent>
+
+      <PasswordDialog
+        open={showPasswordDialog}
+        onClose={() => {
+          setShowPasswordDialog(false);
+          setPendingAction(null);
+        }}
+        onSuccess={handlePasswordSuccess}
+        title="Admin Authentication"
+        description="Please enter your admin password to continue."
+      />
     </Dialog>
   );
 }
