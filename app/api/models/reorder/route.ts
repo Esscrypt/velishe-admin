@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getDb, schema, eq, inArray } from "@/lib/db";
+import { getDb, schema, eq, inArray, sql } from "@/lib/db";
 import { verifyAuth } from "@/lib/auth-middleware";
 import { config } from "dotenv";
 
@@ -31,7 +31,7 @@ export async function POST(request: NextRequest) {
       if (!Number.isNaN(modelId)) {
         await db
           .update(schema.models)
-          .set({ displayOrder: index })
+          .set({ displayOrder: index } as any)
           .where(eq(schema.models.id, modelId));
       }
     }

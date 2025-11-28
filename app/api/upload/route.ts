@@ -104,7 +104,7 @@ export async function POST(request: NextRequest) {
             // Update featured image with base64 data URI
             await db
               .update(schema.models)
-              .set({ featuredImage: dataUri })
+              .set({ [schema.models.featuredImage.name]: dataUri })
               .where(eq(schema.models.slug, slug));
           } else {
             // Check if image already exists
@@ -126,14 +126,14 @@ export async function POST(request: NextRequest) {
                 : -1;
               
               // Insert new image into images table with base64 data
-              await db.insert(schema.images).values({
+              await db.insert(schema.images).values({[schema.images.id.name]: randomUUID(),
                 id: randomUUID(),
                 modelId,
                 type: "image",
                 src: publicPath,
                 alt: `${slug} - ${originalName}`,
-                data: dataUri,
-                order: maxOrder + 1,
+                [schema.images.data.name]: dataUri,
+                [schema.images.order.name]: maxOrder + 1,
               });
             }
           }

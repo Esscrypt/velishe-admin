@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
 import { getDb, schema, eq, asc } from "@/lib/db";
+import type { ImageInsert } from "@/lib/db/schema";
 import { verifyAuth } from "@/lib/auth-middleware";
 import { config } from "dotenv";
 
@@ -119,11 +120,11 @@ export async function PUT(
     const updated = await db
       .update(schema.models)
       .set({
-        slug: modelData.slug,
-        name: modelData.name,
-        stats: modelData.stats,
-        instagram: modelData.instagram || null,
-        featuredImage: modelData.featuredImage || null,
+        [schema.models.slug.name]: modelData.slug,
+        [schema.models.name.name]: modelData.name,
+        [schema.models.stats.name]: modelData.stats,
+        [schema.models.instagram.name]: modelData.instagram || null,
+        [schema.models.featuredImage.name]: modelData.featuredImage || null,
       })
       .where(eq(schema.models.id, modelId))
       .returning();
@@ -159,15 +160,15 @@ export async function PUT(
         
         if (existingImageIds.has(imageId)) {
           // Update existing image
-          const updateData: any = {
-            type: img.type || "image",
-            src: img.src,
-            alt: img.alt || "",
-            order: index,
+          const updateData: Record<string, unknown> = {
+            [schema.images.type.name]: img.type || "image",
+            [schema.images.src.name]: img.src,
+            [schema.images.alt.name]: img.alt || "",
+            [schema.images.order.name]: index,
           };
           // Update data if provided
           if (img.data !== undefined) {
-            updateData.data = img.data;
+            updateData[schema.images.data.name] = img.data;
           }
           await db
             .update(schema.images)
@@ -181,8 +182,8 @@ export async function PUT(
             type: img.type || "image",
             src: img.src || "",
             alt: img.alt || "",
-            data: img.data || null, // Base64 data
-            order: index,
+            [schema.images.data.name]: img.data || null, // Base64 data
+            [schema.images.order.name]: index,
           });
         }
       }
