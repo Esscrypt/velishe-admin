@@ -773,10 +773,86 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
     try {
       const passwordHash = await hashPassword(password);
       
-      // For existing models, use the existing flow (PUT with gallery data)
+      // For existing models: upload only new images, then update model
       if (model) {
         const url = `/api/models/${model.id}`;
+        const modelSlug = formData.slug;
         
+        // Identify new images (those with data and IDs starting with "new-" or no real ID)
+        const newGalleryItems = formData.gallery?.filter((item) => 
+          item.data && (item.id?.startsWith("new-") || !item.id || item.id === "featured")
+        ) || [];
+
+        // Upload new images via PUT requests in parallel
+        if (newGalleryItems.length > 0) {
+          const uploadPromises = newGalleryItems.map(async (item, index) => {
+            // Find the corresponding File object from images array or from the item
+            let file: File | null = null;
+            
+            // Try to find file from images array (for newly uploaded files)
+            const imageMatch = images.find(img => img.preview === item.src || img.data === item.data);
+            if (imageMatch) {
+              file = imageMatch.file;
+            } else if (item.data && item.data.startsWith("data:")) {
+              // Convert base64 data URI back to File if needed
+              // This is a fallback - ideally we should keep the File object
+              const response = await fetch(item.data);
+              const blob = await response.blob();
+              file = new File([blob], `image-${Date.now()}.webp`, { type: blob.type });
+            }
+
+            if (!file) {
+              return { success: false, index, error: "File not found" };
+            }
+
+            const uploadFormData = new FormData();
+            uploadFormData.append("file", file);
+            uploadFormData.append("slug", modelSlug);
+            // First new item might be featured if it's at position 0
+            const isFirstNewItem = formData.gallery && formData.gallery[0] === item;
+            uploadFormData.append("type", isFirstNewItem ? "featured" : "gallery");
+            uploadFormData.append("passwordHash", passwordHash);
+
+            try {
+              const response = await fetch("/api/upload", {
+                method: "PUT",
+                body: uploadFormData,
+              });
+
+              if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.error || error.details || "Unknown error");
+              }
+
+              return { success: true, index, item };
+            } catch (error) {
+              const errorMessage = error instanceof Error ? error.message : String(error);
+              return { success: false, index, item, error: errorMessage };
+            }
+          });
+
+          const results = await Promise.allSettled(uploadPromises);
+          
+          // Check for failures
+          const failures = results
+            .map((result, idx) => {
+              if (result.status === "rejected") {
+                return { index: idx, error: result.reason?.message || "Unknown error" };
+              }
+              if (result.status === "fulfilled" && !result.value.success) {
+                return { index: result.value.index, error: result.value.error };
+              }
+              return null;
+            })
+            .filter((failure): failure is { index: number; error: string } => failure !== null);
+
+          if (failures.length > 0) {
+            const failureMessages = failures.map(f => `Image ${f.index + 1}: ${f.error}`).join("\n");
+            alert(`Failed to upload ${failures.length} new image(s):\n${failureMessages}`);
+            return;
+          }
+        }
+
         // Prepare images: first item in gallery is featured
         let featuredImage: string | null = null;
         let gallery: Array<GalleryItem> = [];
@@ -847,64 +923,52 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
       const newModel = await createResponse.json();
       const modelSlug = newModel.slug;
 
-      // Upload images one by one using the upload endpoint
+      // Upload all images in parallel using Promise.allSettled
       if (images.length > 0) {
-        // First image is featured
-        const featuredFile = images[0].file;
-        const featuredFormData = new FormData();
-        featuredFormData.append("file", featuredFile);
-        featuredFormData.append("slug", modelSlug);
-        featuredFormData.append("type", "featured");
-        featuredFormData.append("passwordHash", passwordHash);
+        const uploadPromises = images.map(async (img, index) => {
+          const formData = new FormData();
+          formData.append("file", img.file);
+          formData.append("slug", modelSlug);
+          formData.append("type", index === 0 ? "featured" : "gallery");
+          formData.append("passwordHash", passwordHash);
 
-        const featuredUploadResponse = await fetch("/api/upload", {
-          method: "POST",
-          body: featuredFormData,
+          try {
+            const response = await fetch("/api/upload", {
+              method: "PUT",
+              body: formData,
+            });
+
+            if (!response.ok) {
+              const error = await response.json();
+              throw new Error(error.error || error.details || "Unknown error");
+            }
+
+            return { success: true, index, type: index === 0 ? "featured" : "gallery" };
+          } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            return { success: false, index, type: index === 0 ? "featured" : "gallery", error: errorMessage };
+          }
         });
 
-        if (!featuredUploadResponse.ok) {
-          const error = await featuredUploadResponse.json();
-          alert(`Failed to upload featured image: ${error.error || "Unknown error"}`);
-          return;
-        }
-
-        // Upload remaining images as gallery items in parallel
-        if (images.length > 1) {
-          const galleryUploadPromises = images.slice(1).map(async (img, index) => {
-            const galleryFormData = new FormData();
-            galleryFormData.append("file", img.file);
-            galleryFormData.append("slug", modelSlug);
-            galleryFormData.append("type", "gallery");
-            galleryFormData.append("passwordHash", passwordHash);
-
-            try {
-              const galleryUploadResponse = await fetch("/api/upload", {
-                method: "POST",
-                body: galleryFormData,
-              });
-
-              if (!galleryUploadResponse.ok) {
-                const error = await galleryUploadResponse.json();
-                throw new Error(`Failed to upload gallery image ${index + 2}: ${error.error || "Unknown error"}`);
-              }
-
-              return { success: true, index: index + 2 };
-            } catch (error) {
-              console.error(`Failed to upload gallery image ${index + 2}:`, error);
-              return { success: false, index: index + 2, error };
+        const results = await Promise.allSettled(uploadPromises);
+        
+        // Check for failures
+        const failures = results
+          .map((result, idx) => {
+            if (result.status === "rejected") {
+              return { index: idx, error: result.reason?.message || "Unknown error" };
             }
-          });
+            if (result.status === "fulfilled" && !result.value.success) {
+              return { index: result.value.index, error: result.value.error };
+            }
+            return null;
+          })
+          .filter((failure): failure is { index: number; error: string } => failure !== null);
 
-          const results = await Promise.allSettled(galleryUploadPromises);
-          
-          // Log any failures but don't block the flow
-          const failures = results.filter((result) => 
-            result.status === "rejected" || 
-            (result.status === "fulfilled" && result.value && !result.value.success)
-          );
-          if (failures.length > 0) {
-            console.warn(`${failures.length} gallery image(s) failed to upload`);
-          }
+        if (failures.length > 0) {
+          const failureMessages = failures.map(f => `Image ${f.index + 1}: ${f.error}`).join("\n");
+          alert(`Failed to upload ${failures.length} image(s):\n${failureMessages}`);
+          return;
         }
       }
 
