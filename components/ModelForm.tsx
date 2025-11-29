@@ -772,69 +772,148 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
 
     try {
       const passwordHash = await hashPassword(password);
-      const url = model
-        ? `/api/models/${model.id}`
-        : "/api/models";
-      const method = model ? "PUT" : "POST";
+      
+      // For existing models, use the existing flow (PUT with gallery data)
+      if (model) {
+        const url = `/api/models/${model.id}`;
+        
+        // Prepare images: first item in gallery is featured
+        let featuredImage: string | null = null;
+        let gallery: Array<GalleryItem> = [];
 
-      // Prepare images: first image is featured, rest are gallery
-      // For new uploads: first uploaded image is featured
-      // For existing models: first item in combined gallery (after drag-and-drop) is featured
-      let featuredImage: string | null = null;
-      let gallery: Array<GalleryItem> = [];
+        if (formData.gallery && formData.gallery.length > 0) {
+          const firstItem = formData.gallery[0];
+          featuredImage = firstItem.data || firstItem.src;
+          gallery = formData.gallery.slice(1).map((item) => ({
+            type: item.type,
+            src: item.src,
+            alt: item.alt,
+            data: item.data,
+          }));
+        } else {
+          featuredImage = formData.featuredImage || null;
+          gallery = formData.gallery || [];
+        }
 
-      if (formData.gallery && formData.gallery.length > 0) {
-        // Existing model or model with gallery: first item in gallery is featured
-        const firstItem = formData.gallery[0];
-        // Use base64 data if available (for new uploads), otherwise use src (for existing images)
-        featuredImage = firstItem.data || firstItem.src;
-        // Extract base64 data from gallery items that have it, otherwise use src
-        gallery = formData.gallery.slice(1).map((item) => ({
-          type: item.type,
-          src: item.src,
-          alt: item.alt,
-          data: item.data, // Include base64 data if present
-        }));
-      } else if (images.length > 0) {
-        // New model with uploads: first image is featured
-        featuredImage = images[0].data;
-        gallery = images.slice(1).map((img, index) => ({
-          type: "image" as const,
-          src: img.preview,
-          alt: `${formData.name || "Image"} - ${index + 1}`,
-          data: img.data,
-        }));
-      } else {
-        featuredImage = formData.featuredImage || null;
-        gallery = formData.gallery || [];
+        const { id, ...dataToSend } = formData;
+
+        const response = await fetch(url, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            ...dataToSend,
+            instagram: formData.instagram || null,
+            featuredImage,
+            gallery,
+            passwordHash,
+          }),
+        });
+
+        if (response.ok) {
+          for (const img of images) {
+            URL.revokeObjectURL(img.preview);
+          }
+          setImages([]);
+          onSave();
+        } else {
+          const error = await response.json();
+          alert(`Failed to save model: ${error.error || "Unknown error"}`);
+        }
+        return;
       }
 
-      // Remove id from body (it's auto-generated and not needed in requests)
+      // For new models: create model first without images, then upload images one by one
       const { id, ...dataToSend } = formData;
-
-      const response = await fetch(url, {
-        method,
+      
+      // Create model without images first
+      const createResponse = await fetch("/api/models", {
+        method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...dataToSend,
           instagram: formData.instagram || null,
-          featuredImage,
-          gallery,
+          featuredImage: null,
+          gallery: [],
           passwordHash,
         }),
       });
 
-      if (response.ok) {
-        // Clean up preview URLs
-        for (const img of images) {
-          URL.revokeObjectURL(img.preview);
-        }
-        setImages([]);
-        onSave();
-      } else {
-        const error = await response.json();
-        alert(`Failed to save model: ${error.error || "Unknown error"}`);
+      if (!createResponse.ok) {
+        const error = await createResponse.json();
+        alert(`Failed to create model: ${error.error || "Unknown error"}`);
+        return;
       }
+
+      const newModel = await createResponse.json();
+      const modelSlug = newModel.slug;
+
+      // Upload images one by one using the upload endpoint
+      if (images.length > 0) {
+        // First image is featured
+        const featuredFile = images[0].file;
+        const featuredFormData = new FormData();
+        featuredFormData.append("file", featuredFile);
+        featuredFormData.append("slug", modelSlug);
+        featuredFormData.append("type", "featured");
+        featuredFormData.append("passwordHash", passwordHash);
+
+        const featuredUploadResponse = await fetch("/api/upload", {
+          method: "POST",
+          body: featuredFormData,
+        });
+
+        if (!featuredUploadResponse.ok) {
+          const error = await featuredUploadResponse.json();
+          alert(`Failed to upload featured image: ${error.error || "Unknown error"}`);
+          return;
+        }
+
+        // Upload remaining images as gallery items in parallel
+        if (images.length > 1) {
+          const galleryUploadPromises = images.slice(1).map(async (img, index) => {
+            const galleryFormData = new FormData();
+            galleryFormData.append("file", img.file);
+            galleryFormData.append("slug", modelSlug);
+            galleryFormData.append("type", "gallery");
+            galleryFormData.append("passwordHash", passwordHash);
+
+            try {
+              const galleryUploadResponse = await fetch("/api/upload", {
+                method: "POST",
+                body: galleryFormData,
+              });
+
+              if (!galleryUploadResponse.ok) {
+                const error = await galleryUploadResponse.json();
+                throw new Error(`Failed to upload gallery image ${index + 2}: ${error.error || "Unknown error"}`);
+              }
+
+              return { success: true, index: index + 2 };
+            } catch (error) {
+              console.error(`Failed to upload gallery image ${index + 2}:`, error);
+              return { success: false, index: index + 2, error };
+            }
+          });
+
+          const results = await Promise.allSettled(galleryUploadPromises);
+          
+          // Log any failures but don't block the flow
+          const failures = results.filter((result) => 
+            result.status === "rejected" || 
+            (result.status === "fulfilled" && result.value && !result.value.success)
+          );
+          if (failures.length > 0) {
+            console.warn(`${failures.length} gallery image(s) failed to upload`);
+          }
+        }
+      }
+
+      // Clean up preview URLs
+      for (const img of images) {
+        URL.revokeObjectURL(img.preview);
+      }
+      setImages([]);
+      onSave();
     } catch (error) {
       console.error("Error saving model:", error);
       alert("Failed to save model");
