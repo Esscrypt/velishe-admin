@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import sharp from "sharp";
 import { randomUUID } from "node:crypto";
 import { verifyPasswordHash } from "@/lib/auth";
-import { getDb, schema, eq } from "@/lib/db";
+import { getDb, schema, eq, and } from "@/lib/db";
 import { config } from "dotenv";
 
 config();
@@ -130,11 +130,50 @@ export async function PUT(request: NextRequest) {
       }
       
       if (type === "featured") {
-        // Update featured image with base64 data URI
-        await db
-          .update(schema.models)
-          .set({ featuredImage: dataUri } as any)
-          .where(eq(schema.models.id, modelIdNum));
+        // Featured image is stored in images table with order 0
+        // First, check if there's already a featured image (order 0)
+        const existingFeatured = await db
+          .select()
+          .from(schema.images)
+          .where(and(
+            eq(schema.images.modelId, modelIdNum),
+            eq(schema.images.order, 0)
+          ))
+          .limit(1);
+        
+        const originalName = file.name.replace(/\.[^/.]+$/, "");
+        const imageId = existingFeatured.length > 0 ? existingFeatured[0].id : randomUUID();
+        
+        // Get model slug for alt text
+        const model = await db
+          .select({ slug: schema.models.slug })
+          .from(schema.models)
+          .where(eq(schema.models.id, modelIdNum))
+          .limit(1);
+        
+        const modelSlug = model[0]?.slug || "model";
+        
+        if (existingFeatured.length > 0) {
+          // Update existing featured image
+          await db
+            .update(schema.images)
+            .set({
+              data: dataUri,
+              alt: `${modelSlug} - ${originalName}`,
+            } as any)
+            .where(eq(schema.images.id, imageId));
+        } else {
+          // Insert new featured image with order 0
+          await db.insert(schema.images).values({
+            id: imageId,
+            modelId: modelIdNum,
+            type: "image",
+            src: `db://${imageId}`,
+            alt: `${modelSlug} - ${originalName}`,
+            data: dataUri,
+            order: 0, // Featured images have order 0
+          } as any);
+        }
       } else {
         // Get current max order for this model
         const existingImages = await db

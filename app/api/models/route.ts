@@ -30,7 +30,6 @@ export async function GET() {
         name: schema.models.name,
         stats: schema.models.stats,
         instagram: schema.models.instagram,
-        featuredImage: schema.models.featuredImage,
         displayOrder: schema.models.displayOrder,
         imageId: schema.images.id,
         imageType: schema.images.type,
@@ -50,14 +49,6 @@ export async function GET() {
       if (!row.modelId) continue; // Skip rows without modelId
       
       if (!modelsMap.has(row.modelId)) {
-        // Use base64 data if available, otherwise use featuredImage as-is
-        let featuredImageSrc = row.featuredImage || "";
-        if (featuredImageSrc && !featuredImageSrc.startsWith("data:")) {
-          featuredImageSrc = featuredImageSrc.startsWith("/models/")
-            ? `/api/images/serve${featuredImageSrc}`
-            : featuredImageSrc;
-        }
-        
         // Ensure stats is always an object
         let stats = row.stats;
         if (!stats || typeof stats !== 'object' || Array.isArray(stats)) {
@@ -78,14 +69,14 @@ export async function GET() {
           name: row.name || "",
           stats: stats,
           instagram: row.instagram || undefined,
-          featuredImage: featuredImageSrc,
+          featuredImage: "", // Will be set from order 0 image
           displayOrder: row.displayOrder ?? 0,
           gallery: [],
         });
       }
       
-      // Add image to gallery if it exists
-      if (row.imageId) {
+      // Add image to gallery or set as featured if order is 0
+      if (row.imageId && (row.imageSrc || row.imageData)) {
         const model = modelsMap.get(row.modelId)!;
         // Use base64 data if available, otherwise fallback to path/API route
         let imageSrc = row.imageData || row.imageSrc;
@@ -94,12 +85,19 @@ export async function GET() {
             ? `/api/images/serve${imageSrc}`
             : imageSrc;
         }
-        model.gallery.push({
-          id: row.imageId,
-          type: row.imageType,
-          src: imageSrc || row.imageSrc,
-          alt: row.imageAlt,
-        });
+        
+        if (row.imageOrder === 0) {
+          // Image with order 0 is the featured image
+          model.featuredImage = imageSrc;
+        } else {
+          // Other images go to gallery
+          model.gallery.push({
+            id: row.imageId,
+            type: row.imageType,
+            src: imageSrc || row.imageSrc,
+            alt: row.imageAlt,
+          });
+        }
       }
     }
     

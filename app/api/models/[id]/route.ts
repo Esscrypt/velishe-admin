@@ -27,7 +27,6 @@ export async function GET(
         name: schema.models.name,
         stats: schema.models.stats,
         instagram: schema.models.instagram,
-        featuredImage: schema.models.featuredImage,
         imageId: schema.images.id,
         imageType: schema.images.type,
         imageSrc: schema.images.src,
@@ -46,14 +45,8 @@ export async function GET(
 
     const firstRow = rows[0];
     
-    // Use base64 data if available, otherwise fallback to path/API route
-    let featuredImageSrc = firstRow.featuredImage || "";
-    if (featuredImageSrc && !featuredImageSrc.startsWith("data:")) {
-      featuredImageSrc = featuredImageSrc.startsWith("/models/")
-        ? `/api/images/serve${featuredImageSrc}`
-        : featuredImageSrc;
-    }
-    
+    // Separate featured image (order 0) from gallery
+    let featuredImageSrc = "";
     const gallery = rows
       .filter((row) => row.imageId !== null)
       .map((row) => {
@@ -64,13 +57,21 @@ export async function GET(
             ? `/api/images/serve${imageSrc}`
             : imageSrc;
         }
+        
+        // Image with order 0 is the featured image
+        if (row.imageOrder === 0) {
+          featuredImageSrc = imageSrc || row.imageSrc || "";
+          return null; // Don't include in gallery
+        }
+        
         return {
           id: row.imageId,
           type: row.imageType,
           src: imageSrc || row.imageSrc,
           alt: row.imageAlt,
         };
-      });
+      })
+      .filter((item): item is { id: string; type: "image" | "video"; src: string; alt: string } => item !== null);
 
     return NextResponse.json({
       id: firstRow.modelId,

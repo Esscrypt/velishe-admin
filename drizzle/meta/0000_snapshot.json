@@ -1,5 +1,5 @@
 {
-  "id": "d553816e-359c-451a-9872-8d418a121d33",
+  "id": "cf8e9ee6-f2c3-4e83-9558-e73aee90a84a",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -111,12 +111,6 @@
         },
         "instagram": {
           "name": "instagram",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "featured_image": {
-          "name": "featured_image",
           "type": "text",
           "primaryKey": false,
           "notNull": false

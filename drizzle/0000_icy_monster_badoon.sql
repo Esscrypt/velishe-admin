@@ -15,7 +15,6 @@ CREATE TABLE "models" (
 	"name" text,
 	"stats" jsonb,
 	"instagram" text,
-	"featured_image" text,
 	"display_order" integer DEFAULT 0,
 	CONSTRAINT "models_slug_unique" UNIQUE("slug")
 );

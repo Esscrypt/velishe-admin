@@ -16,7 +16,6 @@ export const models = pgTable("models", {
   name: text("name"),
   stats: jsonb("stats").$type<ModelStats>(),
   instagram: text("instagram"),
-  featuredImage: text("featured_image"),
   displayOrder: integer("display_order").default(0),
 });
 
