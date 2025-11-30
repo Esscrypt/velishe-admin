@@ -166,18 +166,20 @@ export async function POST(request: NextRequest) {
       .from(schema.models);
     
     const maxOrder = existingModels.length > 0
-      ? Math.max(...existingModels.map((m) => m.displayOrder))
+      ? Math.max(...existingModels.map((m) => m.displayOrder ?? 0))
       : -1;
 
+    // Allow creating model with all fields nullable
+    // All fields can be set later via PUT
     const newModel = await db
       .insert(schema.models)
       .values({
-        slug: modelSlug,
-        name: modelData.name,
-        stats: modelData.stats,
+        slug: modelSlug || null,
+        name: modelData.name || null,
+        stats: modelData.stats || null,
         instagram: modelData.instagram || null,
         featuredImage: modelData.featuredImage || null,
-        displayOrder: maxOrder + 1,
+        displayOrder: modelData.displayOrder ?? (maxOrder + 1),
       } as ModelInsert)
       .returning();
 

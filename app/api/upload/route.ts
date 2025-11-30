@@ -27,12 +27,20 @@ export async function PUT(request: NextRequest) {
       );
     }
     const file = formData.get("file") as File;
-    const slug = formData.get("slug") as string;
+    const slug = formData.get("slug") as string | null;
+    const modelId = formData.get("modelId") as string | null;
     const type = formData.get("type") as string; // 'featured' or 'gallery'
 
-    if (!file || !slug) {
+    if (!file) {
       return NextResponse.json(
-        { error: "File and slug are required" },
+        { error: "File is required" },
+        { status: 400 }
+      );
+    }
+
+    if (!slug && !modelId) {
+      return NextResponse.json(
+        { error: "Either slug or modelId is required" },
         { status: 400 }
       );
     }
@@ -74,33 +82,65 @@ export async function PUT(request: NextRequest) {
     }
 
     try {
-      const model = await db
-        .select()
-        .from(schema.models)
-        .where(eq(schema.models.slug, slug))
-        .limit(1);
+      let modelIdNum: number;
+      
+      // Find model by slug or use provided modelId
+      if (modelId) {
+        modelIdNum = Number.parseInt(modelId, 10);
+        if (Number.isNaN(modelIdNum)) {
+          return NextResponse.json(
+            { error: "Invalid modelId" },
+            { status: 400 }
+          );
+        }
+        
+        // Verify model exists
+        const model = await db
+          .select()
+          .from(schema.models)
+          .where(eq(schema.models.id, modelIdNum))
+          .limit(1);
+        
+        if (model.length === 0) {
+          return NextResponse.json(
+            { error: `Model with id "${modelId}" not found` },
+            { status: 404 }
+          );
+        }
+      } else if (slug) {
+        const model = await db
+          .select()
+          .from(schema.models)
+          .where(eq(schema.models.slug, slug))
+          .limit(1);
 
-      if (model.length === 0) {
+        if (model.length === 0) {
+          return NextResponse.json(
+            { error: `Model with slug "${slug}" not found` },
+            { status: 404 }
+          );
+        }
+        
+        modelIdNum = model[0].id;
+      } else {
         return NextResponse.json(
-          { error: `Model with slug "${slug}" not found` },
-          { status: 404 }
+          { error: "Either slug or modelId is required" },
+          { status: 400 }
         );
       }
-
-      const modelId = model[0].id;
       
       if (type === "featured") {
         // Update featured image with base64 data URI
         await db
           .update(schema.models)
           .set({ featuredImage: dataUri } as any)
-          .where(eq(schema.models.slug, slug));
+          .where(eq(schema.models.id, modelIdNum));
       } else {
         // Get current max order for this model
         const existingImages = await db
           .select()
           .from(schema.images)
-          .where(eq(schema.images.modelId, modelId));
+          .where(eq(schema.images.modelId, modelIdNum));
         
         const maxOrder = existingImages.length > 0
           ? Math.max(...existingImages.map((img) => img.order))
@@ -109,13 +149,22 @@ export async function PUT(request: NextRequest) {
         const originalName = file.name.replace(/\.[^/.]+$/, "");
         const imageId = randomUUID();
         
+        // Get model slug for alt text
+        const model = await db
+          .select({ slug: schema.models.slug })
+          .from(schema.models)
+          .where(eq(schema.models.id, modelIdNum))
+          .limit(1);
+        
+        const modelSlug = model[0]?.slug || "model";
+        
         // Insert new image into images table with base64 data
         await db.insert(schema.images).values({
           id: imageId,
-          modelId,
+          modelId: modelIdNum,
           type: "image",
           src: `db://${imageId}`, // Placeholder since we're using base64 data
-          alt: `${slug} - ${originalName}`,
+          alt: `${modelSlug} - ${originalName}`,
           data: dataUri,
           order: maxOrder + 1,
         } as any);

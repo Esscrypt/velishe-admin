@@ -421,23 +421,12 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
     }
   };
 
-  // Get image dimensions
-  const getImageDimensions = (file: File): Promise<{ width: number; height: number }> => {
-    return new Promise((resolve, reject) => {
-      const img = new Image();
-      img.onload = () => {
-        resolve({ width: img.width, height: img.height });
-      };
-      img.onerror = reject;
-      img.src = URL.createObjectURL(file);
-    });
-  };
-
-  // Resize image using canvas
+  // Resize image using canvas with WebP compression
   const resizeImage = (
     file: File,
     maxWidth: number,
-    maxHeight: number
+    maxHeight: number,
+    quality: number = 0.85
   ): Promise<string> => {
     return new Promise((resolve, reject) => {
       const img = new Image();
@@ -475,8 +464,88 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
             reader.onerror = reject;
             reader.readAsDataURL(blob);
           },
-          file.type || "image/jpeg",
-          0.9
+          "image/webp",
+          quality
+        );
+      };
+      img.onerror = reject;
+      img.src = URL.createObjectURL(file);
+    });
+  };
+
+  // Automatically resize image to reduce upload size
+  const autoResizeImage = async (
+    file: File,
+    maxWidth: number = 1200,
+    maxHeight: number = 1600
+  ): Promise<{ resizedData: string; resizedFile: File; width: number; height: number }> => {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = async () => {
+        let { width, height } = img;
+
+        // Only resize if image is larger than max dimensions
+        const needsResize = width > maxWidth || height > maxHeight;
+        
+        if (!needsResize) {
+          // No resize needed, return original
+          const originalData = await fileToBase64(file);
+          resolve({
+            resizedData: originalData,
+            resizedFile: file,
+            width,
+            height,
+          });
+          return;
+        }
+
+        // Calculate new dimensions maintaining aspect ratio
+        if (width > height && width > maxWidth) {
+          height = (height * maxWidth) / width;
+          width = maxWidth;
+        } else if (height > maxHeight) {
+          width = (width * maxHeight) / height;
+          height = maxHeight;
+        }
+
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+
+        const ctx = canvas.getContext("2d");
+        if (!ctx) {
+          reject(new Error("Could not get canvas context"));
+          return;
+        }
+
+        ctx.drawImage(img, 0, 0, width, height);
+        
+        canvas.toBlob(
+          async (blob) => {
+            if (!blob) {
+              reject(new Error("Could not create blob"));
+              return;
+            }
+            
+            // Convert blob to File
+            const resizedFile = new File([blob], file.name.replace(/\.[^/.]+$/, ".webp"), {
+              type: "image/webp",
+            });
+            
+            const reader = new FileReader();
+            reader.onload = () => {
+              resolve({
+                resizedData: reader.result as string,
+                resizedFile,
+                width: Math.round(width),
+                height: Math.round(height),
+              });
+            };
+            reader.onerror = reject;
+            reader.readAsDataURL(blob);
+          },
+          "image/webp",
+          0.85
         );
       };
       img.onerror = reject;
@@ -581,19 +650,19 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
     try {
       const newImages = await Promise.all(
         files.map(async (file) => {
-          const preview = URL.createObjectURL(file);
-          const dimensions = await getImageDimensions(file);
-          const originalData = await fileToBase64(file);
+          // Automatically resize image to reduce upload size
+          const { resizedData, resizedFile, width, height } = await autoResizeImage(file);
+          const preview = URL.createObjectURL(resizedFile);
           
           return {
-            file,
+            file: resizedFile, // Use resized file for upload
             preview,
-            data: originalData, // Keep original, no auto-resize
-            width: dimensions.width,
-            height: dimensions.height,
-            size: file.size,
-            type: file.type,
-            resizedData: originalData, // Initially same as original
+            data: resizedData, // Use resized data
+            width,
+            height,
+            size: resizedFile.size,
+            type: resizedFile.type,
+            resizedData, // Resized data
           };
         })
       );
@@ -641,19 +710,19 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
     try {
       const newImages = await Promise.all(
         files.map(async (file) => {
-          const preview = URL.createObjectURL(file);
-          const dimensions = await getImageDimensions(file);
-          const originalData = await fileToBase64(file);
+          // Automatically resize image to reduce upload size
+          const { resizedData, resizedFile, width, height } = await autoResizeImage(file);
+          const preview = URL.createObjectURL(resizedFile);
           
           return {
-            file,
+            file: resizedFile, // Use resized file for upload
             preview,
-            data: originalData, // Keep original, no auto-resize
-            width: dimensions.width,
-            height: dimensions.height,
-            size: file.size,
-            type: file.type,
-            resizedData: originalData, // Initially same as original
+            data: resizedData, // Use resized data
+            width,
+            height,
+            size: resizedFile.size,
+            type: resizedFile.type,
+            resizedData, // Resized data
           };
         })
       );
@@ -776,7 +845,7 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
       // For existing models: upload only new images, then update model
       if (model) {
         const url = `/api/models/${model.id}`;
-        const modelSlug = formData.slug;
+        const modelId = model.id;
         
         // Identify new images (those with data and IDs starting with "new-" or no real ID)
         const newGalleryItems = formData.gallery?.filter((item) => 
@@ -807,7 +876,7 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
 
             const uploadFormData = new FormData();
             uploadFormData.append("file", file);
-            uploadFormData.append("slug", modelSlug);
+            uploadFormData.append("modelId", modelId); // Use modelId instead of slug
             // First new item might be featured if it's at position 0
             const isFirstNewItem = formData.gallery && formData.gallery[0] === item;
             uploadFormData.append("type", isFirstNewItem ? "featured" : "gallery");
@@ -853,35 +922,20 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
           }
         }
 
-        // Prepare images: first item in gallery is featured
-        let featuredImage: string | null = null;
-        let gallery: Array<GalleryItem> = [];
-
-        if (formData.gallery && formData.gallery.length > 0) {
-          const firstItem = formData.gallery[0];
-          featuredImage = firstItem.data || firstItem.src;
-          gallery = formData.gallery.slice(1).map((item) => ({
-            type: item.type,
-            src: item.src,
-            alt: item.alt,
-            data: item.data,
-          }));
-        } else {
-          featuredImage = formData.featuredImage || null;
-          gallery = formData.gallery || [];
-        }
-
-        const { id, ...dataToSend } = formData;
+        // Only send stats and non-image fields to the model update endpoint
+        // Images are handled separately via /api/upload
+        const { id, featuredImage, gallery, ...dataToSend } = formData;
 
         const response = await fetch(url, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            ...dataToSend,
-            instagram: formData.instagram || null,
-            featuredImage,
-            gallery,
+            slug: dataToSend.slug,
+            name: dataToSend.name,
+            stats: dataToSend.stats,
+            instagram: dataToSend.instagram || null,
             passwordHash,
+            // featuredImage and gallery are NOT sent - they're handled via /api/upload
           }),
         });
 
@@ -898,18 +952,19 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
         return;
       }
 
-      // For new models: create model first without images, then upload images one by one
-      const { id, ...dataToSend } = formData;
+      // For new models: 
+      // 1. Create empty model (just name/slug) → get ID
+      // 2. Upload images using modelId
+      // 3. Update stats using PUT /api/models/[id]
       
-      // Create model without images first
+      // Step 1: Create empty model with minimal data
       const createResponse = await fetch("/api/models", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          ...dataToSend,
-          instagram: formData.instagram || null,
-          featuredImage: null,
-          gallery: [],
+          name: formData.name,
+          slug: formData.slug,
+          // Don't send stats, instagram, featuredImage, or gallery - will update later
           passwordHash,
         }),
       });
@@ -921,14 +976,14 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
       }
 
       const newModel = await createResponse.json();
-      const modelSlug = newModel.slug;
+      const modelId = newModel.id; // Use ID instead of slug
 
-      // Upload all images in parallel using Promise.allSettled
+      // Step 2: Upload all images in parallel using modelId
       if (images.length > 0) {
         const uploadPromises = images.map(async (img, index) => {
           const formData = new FormData();
           formData.append("file", img.file);
-          formData.append("slug", modelSlug);
+          formData.append("modelId", modelId); // Use modelId instead of slug
           formData.append("type", index === 0 ? "featured" : "gallery");
           formData.append("passwordHash", passwordHash);
 
@@ -970,6 +1025,25 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
           alert(`Failed to upload ${failures.length} image(s):\n${failureMessages}`);
           return;
         }
+      }
+
+      // Step 3: Update stats and other fields
+      const updateResponse = await fetch(`/api/models/${modelId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          slug: formData.slug,
+          name: formData.name,
+          stats: formData.stats,
+          instagram: formData.instagram || null,
+          passwordHash,
+        }),
+      });
+
+      if (!updateResponse.ok) {
+        const error = await updateResponse.json();
+        alert(`Failed to update model stats: ${error.error || "Unknown error"}`);
+        return;
       }
 
       // Clean up preview URLs

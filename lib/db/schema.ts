@@ -12,12 +12,12 @@ export interface ModelStats {
 
 export const models = pgTable("models", {
   id: serial("id").primaryKey(),
-  slug: text("slug").notNull().unique(),
-  name: text("name").notNull(),
-  stats: jsonb("stats").$type<ModelStats>().notNull(),
+  slug: text("slug").unique(),
+  name: text("name"),
+  stats: jsonb("stats").$type<ModelStats>(),
   instagram: text("instagram"),
   featuredImage: text("featured_image"),
-  displayOrder: integer("display_order").notNull().default(0),
+  displayOrder: integer("display_order").default(0),
 });
 
 export const images = pgTable("images", {

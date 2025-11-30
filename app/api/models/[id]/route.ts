@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { randomUUID } from "node:crypto";
 import { getDb, schema, eq, asc } from "@/lib/db";
-import type { ImageInsert } from "@/lib/db/schema";
 import { verifyAuth } from "@/lib/auth-middleware";
 import { config } from "dotenv";
 
@@ -114,80 +112,21 @@ export async function PUT(
     
     const db = getDb();
     
-    // Remove passwordHash from body before processing
-    const { passwordHash, ...modelData } = body;
+    // Remove passwordHash, featuredImage, and gallery from body before processing
+    // Only update stats, name, slug, and instagram - images are handled separately via /api/upload
+    const { passwordHash, featuredImage, gallery, ...modelData } = body;
 
     const updated = await db
       .update(schema.models)
       .set({
-        [schema.models.slug.name]: modelData.slug,
-        [schema.models.name.name]: modelData.name,
-        [schema.models.stats.name]: modelData.stats,
-        [schema.models.instagram.name]: modelData.instagram || null,
-        [schema.models.featuredImage.name]: modelData.featuredImage || null,
-      })
+        slug: modelData.slug,
+        name: modelData.name,
+        stats: modelData.stats,
+        instagram: modelData.instagram || null,
+        // featuredImage and gallery are not updated here - they're handled via /api/upload
+      } as any)
       .where(eq(schema.models.id, modelId))
       .returning();
-    
-    // If gallery is provided, update images
-    if (modelData.gallery && Array.isArray(modelData.gallery)) {
-      // Get existing images
-      const existingImages = await db
-        .select()
-        .from(schema.images)
-        .where(eq(schema.images.modelId, modelId));
-      
-      const existingImageIds = new Set(existingImages.map((img) => img.id));
-      const providedImageIds = new Set(
-        modelData.gallery
-          .map((img: any) => img.id)
-          .filter((id: any) => id !== undefined && id !== null)
-      );
-      
-      // Delete images that are no longer in the gallery
-      const imagesToDelete = existingImages.filter(
-        (img) => !providedImageIds.has(img.id)
-      );
-      
-      for (const img of imagesToDelete) {
-        await db.delete(schema.images).where(eq(schema.images.id, img.id));
-      }
-      
-      // Update or insert images
-      for (let index = 0; index < modelData.gallery.length; index++) {
-        const img = modelData.gallery[index];
-        const imageId = img.id || randomUUID();
-        
-        if (existingImageIds.has(imageId)) {
-          // Update existing image
-          const updateData: Record<string, unknown> = {
-            [schema.images.type.name]: img.type || "image",
-            [schema.images.src.name]: img.src,
-            [schema.images.alt.name]: img.alt || "",
-            [schema.images.order.name]: index,
-          };
-          // Update data if provided
-          if (img.data !== undefined) {
-            updateData[schema.images.data.name] = img.data;
-          }
-          await db
-            .update(schema.images)
-            .set(updateData)
-            .where(eq(schema.images.id, imageId));
-        } else {
-          // Insert new image (with base64 data if provided)
-          await db.insert(schema.images).values({
-            id: imageId,
-            modelId: modelId,
-            type: img.type || "image",
-            src: img.src || "",
-            alt: img.alt || "",
-            [schema.images.data.name]: img.data || null, // Base64 data
-            [schema.images.order.name]: index,
-          });
-        }
-      }
-    }
 
     if (updated.length === 0) {
       return NextResponse.json({ error: "Model not found" }, { status: 404 });
