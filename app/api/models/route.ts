@@ -22,19 +22,27 @@ export async function GET() {
   try {
     const db = getDb();
     
-    // Single query with LEFT JOIN to get all models with their images
+    if (!db) {
+      console.error("[GET /api/models] Database connection not available");
+      return NextResponse.json({ error: "Database connection not available" }, { status: 500 });
+    }
+    
+    // Use LEFT JOIN to get all models with their images in a single query
     const rows = await db
       .select({
         modelId: schema.models.id,
         slug: schema.models.slug,
         name: schema.models.name,
-        stats: schema.models.stats,
+        height: schema.models.height,
+        bust: schema.models.bust,
+        waist: schema.models.waist,
+        hips: schema.models.hips,
+        shoeSize: schema.models.shoeSize,
+        hairColor: schema.models.hairColor,
+        eyeColor: schema.models.eyeColor,
         instagram: schema.models.instagram,
         displayOrder: schema.models.displayOrder,
         imageId: schema.images.id,
-        imageType: schema.images.type,
-        imageSrc: schema.images.src,
-        imageAlt: schema.images.alt,
         imageData: schema.images.data,
         imageOrder: schema.images.order,
       })
@@ -42,49 +50,42 @@ export async function GET() {
       .leftJoin(schema.images, eq(schema.models.id, schema.images.modelId))
       .orderBy(asc(schema.models.displayOrder), asc(schema.images.order));
     
+    console.log(`[GET /api/models] Found ${rows.length} rows from database`);
+    
     // Group by model and collect images
     const modelsMap = new Map<number, any>();
     
     for (const row of rows) {
-      if (!row.modelId) continue; // Skip rows without modelId
+      if (!row.modelId) {
+        console.warn("[GET /api/models] Skipping row without modelId");
+        continue;
+      }
       
       if (!modelsMap.has(row.modelId)) {
-        // Ensure stats is always an object
-        let stats = row.stats;
-        if (!stats || typeof stats !== 'object' || Array.isArray(stats)) {
-          stats = {
-            height: "",
-            bust: "",
-            waist: "",
-            hips: "",
-            shoeSize: "",
-            hairColor: "",
-            eyeColor: "",
-          };
-        }
-        
         modelsMap.set(row.modelId, {
-          id: String(row.modelId), // Convert to string for frontend
+          id: String(row.modelId),
           slug: row.slug || "",
           name: row.name || "",
-          stats: stats,
+          stats: {
+            height: row.height || "",
+            bust: row.bust || "",
+            waist: row.waist || "",
+            hips: row.hips || "",
+            shoeSize: row.shoeSize || "",
+            hairColor: row.hairColor || "",
+            eyeColor: row.eyeColor || "",
+          },
           instagram: row.instagram || undefined,
-          featuredImage: "", // Will be set from order 0 image
+          featuredImage: "", // Will be set from images
           displayOrder: row.displayOrder ?? 0,
           gallery: [],
         });
       }
       
       // Add image to gallery or set as featured if order is 0
-      if (row.imageId && (row.imageSrc || row.imageData)) {
+      if (row.imageId && row.imageData) {
         const model = modelsMap.get(row.modelId)!;
-        // Use base64 data if available, otherwise fallback to path/API route
-        let imageSrc = row.imageData || row.imageSrc;
-        if (imageSrc && !imageSrc.startsWith("data:")) {
-          imageSrc = imageSrc.startsWith("/models/")
-            ? `/api/images/serve${imageSrc}`
-            : imageSrc;
-        }
+        const imageSrc = row.imageData;
         
         if (row.imageOrder === 0) {
           // Image with order 0 is the featured image
@@ -93,11 +94,21 @@ export async function GET() {
           // Other images go to gallery
           model.gallery.push({
             id: row.imageId,
-            type: row.imageType,
-            src: imageSrc || row.imageSrc,
-            alt: row.imageAlt,
+            type: "image",
+            src: imageSrc,
+            alt: "",
           });
         }
+      }
+    }
+    
+    // For models without a featured image (order 0), use the first image if available
+    for (const model of modelsMap.values()) {
+      if (!model.featuredImage && model.gallery.length > 0) {
+        // Use the first gallery image as featured
+        model.featuredImage = model.gallery[0].src;
+        // Remove it from gallery since it's now featured
+        model.gallery.shift();
       }
     }
     
@@ -106,15 +117,19 @@ export async function GET() {
       return a.displayOrder - b.displayOrder;
     });
 
+    console.log(`[GET /api/models] Returning ${models.length} models`);
     return NextResponse.json(models);
   } catch (error) {
-    console.error("Error fetching models:", error);
+    console.error("[GET /api/models] Error fetching models:", error);
     if (error instanceof Error) {
       console.error("Error message:", error.message);
       console.error("Error stack:", error.stack);
     }
-    // Return empty array instead of error object to prevent frontend issues
-    return NextResponse.json([]);
+    // Return error details in development, empty array in production
+    return NextResponse.json(
+      { error: "Failed to fetch models", details: error instanceof Error ? error.message : String(error) },
+      { status: 500 }
+    );
   }
 }
 
@@ -131,6 +146,10 @@ export async function POST(request: NextRequest) {
     
     const db = getDb();
     
+    if (!db) {
+      return NextResponse.json({ error: "Database connection not available" }, { status: 500 });
+    }
+    
     // Remove passwordHash and id from body before processing (id is auto-generated)
     const { passwordHash, id, ...modelData } = body;
 
@@ -144,7 +163,7 @@ export async function POST(request: NextRequest) {
       let counter = 1;
       while (true) {
         const existing = await db
-          .select()
+          .select({ id: schema.models.id })
           .from(schema.models)
           .where(eq(schema.models.slug, uniqueSlug))
           .limit(1);
@@ -174,9 +193,14 @@ export async function POST(request: NextRequest) {
       .values({
         slug: modelSlug || null,
         name: modelData.name || null,
-        stats: modelData.stats || null,
+        height: modelData.stats?.height || null,
+        bust: modelData.stats?.bust || null,
+        waist: modelData.stats?.waist || null,
+        hips: modelData.stats?.hips || null,
+        shoeSize: modelData.stats?.shoeSize || null,
+        hairColor: modelData.stats?.hairColor || null,
+        eyeColor: modelData.stats?.eyeColor || null,
         instagram: modelData.instagram || null,
-        featuredImage: modelData.featuredImage || null,
         displayOrder: modelData.displayOrder ?? (maxOrder + 1),
       } as ModelInsert)
       .returning();
@@ -190,9 +214,6 @@ export async function POST(request: NextRequest) {
         .map((img: any, index: number) => ({
           id: randomUUID(),
           modelId: modelId,
-          type: img.type || "image",
-          src: img.src || "", // Temporary src, will be updated
-          alt: img.alt || `${modelData.name} - ${index + 1}`,
           data: img.data, // Base64 data
           order: index,
         }));

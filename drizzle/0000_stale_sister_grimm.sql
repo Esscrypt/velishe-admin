@@ -1,10 +1,7 @@
 CREATE TABLE "images" (
 	"id" text PRIMARY KEY NOT NULL,
 	"model_id" integer NOT NULL,
-	"type" text NOT NULL,
-	"src" text NOT NULL,
-	"alt" text NOT NULL,
-	"data" text,
+	"data" text NOT NULL,
 	"order" integer DEFAULT 0 NOT NULL,
 	"created_at" timestamp DEFAULT now() NOT NULL
 );
@@ -13,7 +10,13 @@ CREATE TABLE "models" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"slug" text,
 	"name" text,
-	"stats" jsonb,
+	"height" text,
+	"bust" text,
+	"waist" text,
+	"hips" text,
+	"shoe_size" text,
+	"hair_color" text,
+	"eye_color" text,
 	"instagram" text,
 	"display_order" integer DEFAULT 0,
 	CONSTRAINT "models_slug_unique" UNIQUE("slug")

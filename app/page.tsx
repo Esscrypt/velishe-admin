@@ -76,13 +76,13 @@ function SortableItem({ model, onEdit, onDelete }: Readonly<{ model: Model; onEd
       >
         <GripVertical className="w-5 h-5 text-gray-400" />
       </div>
-      {model.featuredImage && (
+      {model.featuredImage && model.featuredImage.trim() !== "" ? (
         <img
           src={model.featuredImage}
           alt={model.name}
           className="w-16 h-20 object-cover rounded"
         />
-      )}
+      ) : null}
       <div className="flex-1">
         <h3 className="font-semibold text-lg">{model.name}</h3>
         <p className="text-sm text-gray-600">Slug: {model.slug}</p>

@@ -25,12 +25,15 @@ export async function GET(
         modelId: schema.models.id,
         slug: schema.models.slug,
         name: schema.models.name,
-        stats: schema.models.stats,
+        height: schema.models.height,
+        bust: schema.models.bust,
+        waist: schema.models.waist,
+        hips: schema.models.hips,
+        shoeSize: schema.models.shoeSize,
+        hairColor: schema.models.hairColor,
+        eyeColor: schema.models.eyeColor,
         instagram: schema.models.instagram,
         imageId: schema.images.id,
-        imageType: schema.images.type,
-        imageSrc: schema.images.src,
-        imageAlt: schema.images.alt,
         imageData: schema.images.data,
         imageOrder: schema.images.order,
       })
@@ -47,39 +50,55 @@ export async function GET(
     
     // Separate featured image (order 0) from gallery
     let featuredImageSrc = "";
-    const gallery = rows
-      .filter((row) => row.imageId !== null)
-      .map((row) => {
-        // Use base64 data if available, otherwise fallback to path/API route
-        let imageSrc = row.imageData || row.imageSrc;
-        if (imageSrc && !imageSrc.startsWith("data:")) {
-          imageSrc = imageSrc.startsWith("/models/")
-            ? `/api/images/serve${imageSrc}`
-            : imageSrc;
+    const gallery: Array<{ id: string; type: "image"; src: string; alt: string }> = [];
+    
+    for (const row of rows) {
+      // Only process rows that have image data
+      if (row.imageId && row.imageData) {
+        const imageSrc = row.imageData; // This is the data URI from the database (e.g., "data:image/webp;base64,...")
+        
+        // Ensure imageSrc is a valid string
+        if (typeof imageSrc !== 'string' || imageSrc.trim() === '') {
+          console.warn(`[GET /api/models/${modelId}] Skipping image ${row.imageId} with invalid data`);
+          continue;
         }
         
         // Image with order 0 is the featured image
         if (row.imageOrder === 0) {
-          featuredImageSrc = imageSrc || row.imageSrc || "";
-          return null; // Don't include in gallery
+          featuredImageSrc = imageSrc;
+        } else {
+          // Other images go to gallery - ensure src is always set
+          gallery.push({
+            id: row.imageId,
+            type: "image",
+            src: imageSrc, // data URI from database - can be used directly as img src
+            alt: "",
+          });
         }
-        
-        return {
-          id: row.imageId,
-          type: row.imageType,
-          src: imageSrc || row.imageSrc,
-          alt: row.imageAlt,
-        };
-      })
-      .filter((item): item is { id: string; type: "image" | "video"; src: string; alt: string } => item !== null);
+      }
+    }
+    
+    // If no featured image (order 0) but we have gallery images, use the first one
+    if (!featuredImageSrc && gallery.length > 0) {
+      featuredImageSrc = gallery[0].src;
+      gallery.shift(); // Remove it from gallery since it's now featured
+    }
 
     return NextResponse.json({
       id: firstRow.modelId,
       slug: firstRow.slug,
       name: firstRow.name,
-      stats: firstRow.stats,
+      stats: {
+        height: firstRow.height || "",
+        bust: firstRow.bust || "",
+        waist: firstRow.waist || "",
+        hips: firstRow.hips || "",
+        shoeSize: firstRow.shoeSize || "",
+        hairColor: firstRow.hairColor || "",
+        eyeColor: firstRow.eyeColor || "",
+      },
       instagram: firstRow.instagram || undefined,
-      featuredImage: featuredImageSrc,
+      featuredImage: featuredImageSrc, // Empty string if no images, never null
       gallery,
     });
   } catch (error) {
@@ -122,7 +141,13 @@ export async function PUT(
       .set({
         slug: modelData.slug,
         name: modelData.name,
-        stats: modelData.stats,
+        height: modelData.stats?.height || null,
+        bust: modelData.stats?.bust || null,
+        waist: modelData.stats?.waist || null,
+        hips: modelData.stats?.hips || null,
+        shoeSize: modelData.stats?.shoeSize || null,
+        hairColor: modelData.stats?.hairColor || null,
+        eyeColor: modelData.stats?.eyeColor || null,
         instagram: modelData.instagram || null,
         // featuredImage and gallery are not updated here - they're handled via /api/upload
       } as any)

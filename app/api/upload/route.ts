@@ -96,7 +96,7 @@ export async function PUT(request: NextRequest) {
         
         // Verify model exists
         const model = await db
-          .select()
+          .select({ id: schema.models.id })
           .from(schema.models)
           .where(eq(schema.models.id, modelIdNum))
           .limit(1);
@@ -109,7 +109,7 @@ export async function PUT(request: NextRequest) {
         }
       } else if (slug) {
         const model = await db
-          .select()
+          .select({ id: schema.models.id })
           .from(schema.models)
           .where(eq(schema.models.slug, slug))
           .limit(1);
@@ -133,7 +133,7 @@ export async function PUT(request: NextRequest) {
         // Featured image is stored in images table with order 0
         // First, check if there's already a featured image (order 0)
         const existingFeatured = await db
-          .select()
+          .select({ id: schema.images.id })
           .from(schema.images)
           .where(and(
             eq(schema.images.modelId, modelIdNum),
@@ -159,7 +159,6 @@ export async function PUT(request: NextRequest) {
             .update(schema.images)
             .set({
               data: dataUri,
-              alt: `${modelSlug} - ${originalName}`,
             } as any)
             .where(eq(schema.images.id, imageId));
         } else {
@@ -167,9 +166,6 @@ export async function PUT(request: NextRequest) {
           await db.insert(schema.images).values({
             id: imageId,
             modelId: modelIdNum,
-            type: "image",
-            src: `db://${imageId}`,
-            alt: `${modelSlug} - ${originalName}`,
             data: dataUri,
             order: 0, // Featured images have order 0
           } as any);
@@ -177,7 +173,7 @@ export async function PUT(request: NextRequest) {
       } else {
         // Get current max order for this model
         const existingImages = await db
-          .select()
+          .select({ order: schema.images.order })
           .from(schema.images)
           .where(eq(schema.images.modelId, modelIdNum));
         
@@ -201,9 +197,6 @@ export async function PUT(request: NextRequest) {
         await db.insert(schema.images).values({
           id: imageId,
           modelId: modelIdNum,
-          type: "image",
-          src: `db://${imageId}`, // Placeholder since we're using base64 data
-          alt: `${modelSlug} - ${originalName}`,
           data: dataUri,
           order: maxOrder + 1,
         } as any);

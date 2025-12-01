@@ -5,17 +5,31 @@ import * as schema from "./schema";
 let dbInstance: ReturnType<typeof drizzle> | null = null;
 let sqlInstance: ReturnType<typeof postgres> | null = null;
 
+/**
+ * Get database connection instance
+ * Returns null if DATABASE_URL is not configured
+ */
 export function getDb() {
   if (!process.env.DATABASE_URL) {
-    throw new Error("DATABASE_URL environment variable is not set");
+    console.warn("[getDb] DATABASE_URL environment variable is not set");
+    return null;
   }
 
   if (!sqlInstance) {
-    sqlInstance = postgres(process.env.DATABASE_URL, {
-      max: 10,
-      idle_timeout: 20,
-      connect_timeout: 10,
-    });
+    try {
+      const isProduction = process.env.NODE_ENV === "production" || process.env.VERCEL;
+      
+      sqlInstance = postgres(process.env.DATABASE_URL, {
+        max: 1,
+        idle_timeout: 20,
+        connect_timeout: 10,
+        ssl: isProduction ? { rejectUnauthorized: false } : undefined,
+      });
+      console.log("[getDb] Database connection instance created");
+    } catch (error) {
+      console.error("[getDb] Failed to create database connection:", error);
+      return null;
+    }
   }
 
   if (!dbInstance) {

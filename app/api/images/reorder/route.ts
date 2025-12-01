@@ -37,31 +37,7 @@ export async function POST(request: NextRequest) {
         .where(eq(schema.images.id, imageId));
     }
 
-    // Update featured image to be the first image (order 0)
-    if (orderedImageIds.length > 0) {
-      const firstImageId = orderedImageIds[0];
-      const firstImage = await db
-        .select({
-          data: schema.images.data,
-          src: schema.images.src,
-        })
-        .from(schema.images)
-        .where(eq(schema.images.id, firstImageId))
-        .limit(1);
-
-      if (firstImage.length > 0) {
-        // Use base64 data if available, otherwise use src
-        const featuredImageSrc = firstImage[0].data || firstImage[0].src || null;
-        
-        const modelIdNum = Number.parseInt(modelId, 10);
-        if (!Number.isNaN(modelIdNum)) {
-          await db
-            .update(schema.models)
-            .set({ featuredImage: featuredImageSrc } as any)
-            .where(eq(schema.models.id, modelIdNum));
-        }
-      }
-    }
+    // Featured image is automatically the image with order 0, no need to update models table
 
     return NextResponse.json({ success: true });
   } catch (error) {
