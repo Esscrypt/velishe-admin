@@ -111,6 +111,7 @@ function SortableItem({ model, onEdit, onDelete }: Readonly<{ model: Model; onEd
 
 export default function AdminPage() {
   const [models, setModels] = useState<Model[]>([]);
+  const [originalModels, setOriginalModels] = useState<Model[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editingModel, setEditingModel] = useState<Model | null>(null);
@@ -118,6 +119,8 @@ export default function AdminPage() {
   const [passwordDialogAction, setPasswordDialogAction] = useState<((passwordHash: string) => void) | null>(null);
   const [passwordDialogTitle, setPasswordDialogTitle] = useState("Admin Authentication");
   const [passwordDialogDescription, setPasswordDialogDescription] = useState("Please enter your admin password to continue.");
+  const [hasPendingReorder, setHasPendingReorder] = useState(false);
+  const [isReordering, setIsReordering] = useState(false);
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -132,13 +135,61 @@ export default function AdminPage() {
       const response = await fetch("/api/models");
       const data = await response.json();
       // Ensure data is always an array
-      setModels(Array.isArray(data) ? data : []);
+      const modelsArray = Array.isArray(data) ? data : [];
+      setModels(modelsArray);
+      setOriginalModels(modelsArray);
+      setHasPendingReorder(false);
     } catch (error) {
       console.error("Error fetching models:", error);
       setModels([]); // Set empty array on error
+      setOriginalModels([]);
+      setHasPendingReorder(false);
     } finally {
       setLoading(false);
     }
+  };
+
+  const fetchSingleModel = async (id: string) => {
+    try {
+      const response = await fetch(`/api/models/${id}`);
+      if (!response.ok) {
+        console.error(`Failed to fetch model ${id}`);
+        return null;
+      }
+      const model = await response.json();
+      return model;
+    } catch (error) {
+      console.error(`Error fetching model ${id}:`, error);
+      return null;
+    }
+  };
+
+  const updateModelInList = (updatedModel: Model) => {
+    // Normalize ID to string for consistent comparison
+    const normalizedId = String(updatedModel.id);
+    const normalizedModel = { ...updatedModel, id: normalizedId };
+    
+    setModels((prevModels) => {
+      const index = prevModels.findIndex((m) => String(m.id) === normalizedId);
+      if (index === -1) {
+        // Model not found, add it (for new models)
+        return [...prevModels, normalizedModel];
+      }
+      // Update existing model
+      const newModels = [...prevModels];
+      newModels[index] = normalizedModel;
+      return newModels;
+    });
+    // Also update original models if it exists there
+    setOriginalModels((prevOriginal) => {
+      const index = prevOriginal.findIndex((m) => String(m.id) === normalizedId);
+      if (index === -1) {
+        return [...prevOriginal, normalizedModel];
+      }
+      const newOriginal = [...prevOriginal];
+      newOriginal[index] = normalizedModel;
+      return newOriginal;
+    });
   };
 
   useEffect(() => {
@@ -154,7 +205,9 @@ export default function AdminPage() {
       });
 
       if (response.ok) {
-        fetchModels();
+        // Remove model from list instead of reloading all
+        setModels((prevModels) => prevModels.filter((m) => m.id !== id));
+        setOriginalModels((prevOriginal) => prevOriginal.filter((m) => m.id !== id));
       } else {
         const error = await response.json();
         alert(`Failed to delete model: ${error.error || "Unknown error"}`);
@@ -217,13 +270,29 @@ export default function AdminPage() {
     }
   };
 
-  const handleFormClose = () => {
+  const handleFormClose = async (updatedModelId?: string) => {
+    const wasEditing = !!editingModel;
     setShowForm(false);
     setEditingModel(null);
-    fetchModels();
+    
+    // If model ID provided, it means a model was saved (either updated or newly created)
+    if (updatedModelId) {
+      if (wasEditing) {
+        // Editing existing model - only reload that specific model
+        const updatedModel = await fetchSingleModel(updatedModelId);
+        if (updatedModel) {
+          updateModelInList(updatedModel);
+        }
+      } else {
+        // New model was created - need to reload all to get the new model in the list
+        fetchModels();
+      }
+    }
+    // If no model ID provided, form was closed without saving - no reload needed
   };
 
   const performReorder = async (orderedIds: string[], passwordHash: string) => {
+    setIsReordering(true);
     try {
       const response = await fetch("/api/models/reorder", {
         method: "POST",
@@ -234,19 +303,28 @@ export default function AdminPage() {
       if (!response.ok) {
         const error = await response.json();
         alert(`Failed to reorder: ${error.error || "Unknown error"}`);
-        fetchModels(); // Revert on error
+        // Revert on error - restore original order
+        setModels(originalModels);
         // Clear cache on auth failure
         if (response.status === 401) {
           clearCachedPasswordHash();
         }
+      } else {
+        // Success - update original models to match current order
+        // No need to reload, the order is already correct in state
+        setOriginalModels(models);
+        setHasPendingReorder(false);
       }
     } catch (error) {
       console.error("Error reordering models:", error);
-      fetchModels(); // Revert on error
+      // Revert on error - restore original order
+      setModels(originalModels);
+    } finally {
+      setIsReordering(false);
     }
   };
 
-  const handleDragEnd = async (event: any) => {
+  const handleDragEnd = (event: any) => {
     const { active, over } = event;
 
     if (active.id !== over?.id) {
@@ -255,19 +333,29 @@ export default function AdminPage() {
 
       const newModels = arrayMove(models, oldIndex, newIndex);
       setModels(newModels);
-
-      const cachedHash = getCachedPasswordHash();
-      if (cachedHash) {
-        await performReorder(newModels.map((m) => m.id), cachedHash);
-        return;
-      }
-
-      // Show password dialog
-      setPasswordDialogTitle("Reorder Models");
-      setPasswordDialogDescription("Please enter your admin password to save the new order.");
-      setPasswordDialogAction(() => (hash: string) => performReorder(newModels.map((m) => m.id), hash));
-      setShowPasswordDialog(true);
+      setHasPendingReorder(true);
     }
+  };
+
+  const handleSaveReorder = async () => {
+    const orderedIds = models.map((m) => m.id);
+    const cachedHash = getCachedPasswordHash();
+    
+    if (cachedHash) {
+      await performReorder(orderedIds, cachedHash);
+      return;
+    }
+
+    // Show password dialog
+    setPasswordDialogTitle("Reorder Models");
+    setPasswordDialogDescription("Please enter your admin password to save the new order.");
+    setPasswordDialogAction(() => (hash: string) => performReorder(orderedIds, hash));
+    setShowPasswordDialog(true);
+  };
+
+  const handleCancelReorder = () => {
+    setModels(originalModels);
+    setHasPendingReorder(false);
   };
 
   // Loading state is now shown inline with the progress bar
@@ -285,6 +373,23 @@ export default function AdminPage() {
         <div className="flex justify-between items-center mb-8">
           <h1 className="text-3xl font-bold">Models Admin</h1>
           <div className="flex items-center gap-4">
+            {hasPendingReorder && (
+              <>
+                <Button
+                  variant="outline"
+                  onClick={handleCancelReorder}
+                  disabled={isReordering}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleSaveReorder}
+                  disabled={isReordering}
+                >
+                  {isReordering ? "Saving Order..." : "Save Order"}
+                </Button>
+              </>
+            )}
             <Button onClick={handleAddModel}>
               <Plus className="w-5 h-5" />
               Add Model
@@ -304,8 +409,8 @@ export default function AdminPage() {
         {showForm && (
           <ModelForm
             model={editingModel}
-            onClose={handleFormClose}
-            onSave={handleFormClose}
+            onClose={() => handleFormClose()}
+            onSave={(modelId?: string) => handleFormClose(modelId)}
             password={getCachedPassword() || ""}
           />
         )}

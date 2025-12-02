@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getDb, schema, eq, inArray, sql } from "@/lib/db";
+import { getDb, schema, eq } from "@/lib/db";
 import { verifyAuth } from "@/lib/auth-middleware";
 import { config } from "dotenv";
 
@@ -16,8 +16,8 @@ export async function POST(request: NextRequest) {
     }
 
     const db = getDb();
-    const { orderedIds } = body as { orderedIds: string[] };
-
+    const { orderedIds } = body;
+    
     if (!Array.isArray(orderedIds)) {
       return NextResponse.json(
         { error: "orderedIds array is required" },
@@ -25,16 +25,18 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Update display order for each model
-    for (let index = 0; index < orderedIds.length; index++) {
-      const modelId = Number.parseInt(orderedIds[index], 10);
-      if (!Number.isNaN(modelId)) {
-        await db
-          .update(schema.models)
-          .set({ displayOrder: index } as any)
-          .where(eq(schema.models.id, modelId));
+    // Update display order for each model in a transaction
+    await db.transaction(async (tx) => {
+      for (let index = 0; index < orderedIds.length; index++) {
+        const modelId = Number.parseInt(orderedIds[index], 10);
+        if (!Number.isNaN(modelId)) {
+          await tx
+            .update(schema.models)
+            .set({ displayOrder: index } as any)
+            .where(eq(schema.models.id, modelId));
+        }
       }
-    }
+    });
 
     return NextResponse.json({ success: true });
   } catch (error) {

@@ -61,7 +61,7 @@ interface Model {
 interface ModelFormProps {
   model?: Model | null;
   onClose: () => void;
-  onSave: () => void;
+  onSave: (modelId?: string) => void;
   password?: string;
 }
 
@@ -303,7 +303,6 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [isReordering, setIsReordering] = useState(false);
-  const [reorderSuccess, setReorderSuccess] = useState(false);
   const [images, setImages] = useState<Array<{ 
     file: File; 
     preview: string; 
@@ -845,7 +844,7 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
     try {
       const passwordHash = await hashPassword(password);
       
-      // For existing models: upload only new images, then update model
+      // For existing models: upload only new images, then update model, then reorder if needed
       if (model) {
         const url = `/api/models/${model.id}`;
         const modelId = model.id;
@@ -942,16 +941,53 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
           }),
         });
 
-        if (response.ok) {
-          for (const img of images) {
-            URL.revokeObjectURL(img.preview);
-          }
-          setImages([]);
-          onSave();
-        } else {
+        if (!response.ok) {
           const error = await response.json();
           alert(`Failed to save model: ${error.error || "Unknown error"}`);
+          return;
         }
+
+        // Reorder images if gallery order has changed
+        if (formData.gallery && formData.gallery.length > 0) {
+          setIsReordering(true);
+          try {
+            // Create mapping of imageId -> order (starting from 0)
+            // The first image (index 0) is the featured image
+            const imageOrders: Record<string, number> = {};
+            formData.gallery.forEach((img, index) => {
+              if (img.id && !img.id.startsWith("new-")) {
+                imageOrders[img.id] = index;
+              }
+            });
+            
+            if (Object.keys(imageOrders).length > 0) {
+              const reorderResponse = await fetch("/api/images/reorder", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  modelId: model.id,
+                  imageOrders,
+                  passwordHash,
+                }),
+              });
+              
+              if (!reorderResponse.ok) {
+                console.error("Failed to reorder images, but model was saved");
+              }
+            }
+          } catch (error) {
+            console.error("Error reordering images:", error);
+            // Don't fail the whole save if reordering fails
+          } finally {
+            setIsReordering(false);
+          }
+        }
+
+        for (const img of images) {
+          URL.revokeObjectURL(img.preview);
+        }
+        setImages([]);
+        onSave(model.id);
         return;
       }
 
@@ -1054,7 +1090,7 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
         URL.revokeObjectURL(img.preview);
       }
       setImages([]);
-      onSave();
+      onSave(modelId);
     } catch (error) {
       console.error("Error saving model:", error);
       alert("Failed to save model");
@@ -1314,71 +1350,26 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
               <DndContext
                 sensors={sensors}
                 collisionDetection={closestCenter}
-                onDragEnd={async (event) => {
+                onDragEnd={(event) => {
                   const { active, over } = event;
-                    if (!over || active.id === over.id) return;
-                    
-                    const oldIndex = formData.gallery.findIndex(
-                      (item) => item.id === active.id || item.src === active.id
-                    );
-                    const newIndex = formData.gallery.findIndex(
-                      (item) => item.id === over.id || item.src === over.id
-                    );
-                    const newGallery = arrayMove(formData.gallery, oldIndex, newIndex);
-                    
-                    // Update featured image to be the first item
-                    const updatedFormData = {
-                      ...formData,
-                      gallery: newGallery,
-                      featuredImage: newGallery[0]?.src || formData.featuredImage,
-                    };
-                    setFormData(updatedFormData);
-                    
-                    // Update order in database if model exists
-                    if (model?.id && password) {
-                      setIsReordering(true);
-                      setReorderSuccess(false);
-                      try {
-                        const passwordHash = await hashPassword(password);
-                        // Create mapping of imageId -> order (starting from 0)
-                        // The first image (index 0) is the featured image
-                        const imageOrders: Record<string, number> = {};
-                        newGallery.forEach((img, index) => {
-                          if (img.id) {
-                            imageOrders[img.id] = index;
-                          }
-                        });
-                        
-                        if (Object.keys(imageOrders).length > 0) {
-                          const response = await fetch("/api/images/reorder", {
-                            method: "POST",
-                            headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({
-                              modelId: model.id,
-                              imageOrders,
-                              passwordHash,
-                            }),
-                          });
-                          
-                          if (response.ok) {
-                            setReorderSuccess(true);
-                            // Clear success message after 3 seconds
-                            setTimeout(() => setReorderSuccess(false), 3000);
-                            // Trigger refetch of models
-                            onSave();
-                          } else {
-                            throw new Error("Failed to reorder images");
-                          }
-                        }
-                      } catch (error) {
-                        console.error("Error reordering images:", error);
-                        alert("Failed to reorder images. Please try again.");
-                      } finally {
-                        setIsReordering(false);
-                      }
-                    }
-                  }
-                }
+                  if (!over || active.id === over.id) return;
+                  
+                  const oldIndex = formData.gallery.findIndex(
+                    (item) => item.id === active.id || item.src === active.id
+                  );
+                  const newIndex = formData.gallery.findIndex(
+                    (item) => item.id === over.id || item.src === over.id
+                  );
+                  const newGallery = arrayMove(formData.gallery, oldIndex, newIndex);
+                  
+                  // Update featured image to be the first item
+                  const updatedFormData = {
+                    ...formData,
+                    gallery: newGallery,
+                    featuredImage: newGallery[0]?.src || formData.featuredImage,
+                  };
+                  setFormData(updatedFormData);
+                }}
               >
                 <SortableContext
                   items={formData.gallery.map((item) => item.id || item.src)}
@@ -1543,12 +1534,6 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
             </div>
           </div>
 
-          {reorderSuccess && (
-            <div className="bg-green-50 border border-green-200 rounded-md p-3 text-sm text-green-800 mb-4">
-              ✓ Images reordered successfully!
-            </div>
-          )}
-          
           {isReordering && (
             <div className="bg-blue-50 border border-blue-200 rounded-md p-3 text-sm text-blue-800 mb-4">
               Reordering images...

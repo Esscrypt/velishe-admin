@@ -88,7 +88,7 @@ export async function GET(
     }
 
     return NextResponse.json({
-      id: firstRow.modelId,
+      id: String(firstRow.modelId), // Convert to string for consistency with /api/models
       slug: firstRow.slug,
       name: firstRow.name,
       stats: {
