@@ -879,9 +879,13 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
             const uploadFormData = new FormData();
             uploadFormData.append("file", file);
             uploadFormData.append("modelId", modelId); // Use modelId instead of slug
+            // Find the position in the gallery to determine order
+            const galleryIndex = formData.gallery?.findIndex(g => g.id === item.id || g.src === item.src) ?? -1;
+            const order = galleryIndex >= 0 ? galleryIndex : formData.gallery?.length ?? 0;
             // First new item might be featured if it's at position 0
             const isFirstNewItem = formData.gallery && formData.gallery[0] === item;
             uploadFormData.append("type", isFirstNewItem ? "featured" : "gallery");
+            uploadFormData.append("order", String(order)); // Pass explicit order
             uploadFormData.append("passwordHash", passwordHash);
 
             try {
@@ -948,15 +952,41 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
         }
 
         // Reorder images if gallery order has changed
+        // After uploading new images, fetch the model to get all image IDs, then reorder
         if (formData.gallery && formData.gallery.length > 0) {
           setIsReordering(true);
           try {
-            // Create mapping of imageId -> order (starting from 0)
-            // The first image (index 0) is the featured image
+            // Fetch the model to get all images with their IDs (including newly uploaded ones)
+            const modelResponse = await fetch(`/api/models/${model.id}`);
+            if (!modelResponse.ok) {
+              throw new Error("Failed to fetch model for reordering");
+            }
+            const updatedModel = await modelResponse.json();
+            
+            // Build a map of src -> imageId from the fetched model
+            const srcToIdMap = new Map<string, string>();
+            if (updatedModel.featuredImage && updatedModel.featuredImageId) {
+              srcToIdMap.set(updatedModel.featuredImage, updatedModel.featuredImageId);
+            }
+            if (updatedModel.gallery) {
+              updatedModel.gallery.forEach((img: GalleryItem) => {
+                if (img.id && img.src) {
+                  srcToIdMap.set(img.src, img.id);
+                }
+              });
+            }
+            
+            // Create mapping of imageId -> order based on gallery order
+            // Match gallery items to image IDs by src
             const imageOrders: Record<string, number> = {};
             formData.gallery.forEach((img, index) => {
-              if (img.id && !img.id.startsWith("new-")) {
-                imageOrders[img.id] = index;
+              // Try to find the image ID by matching src
+              const imageId = img.id && !img.id.startsWith("new-") 
+                ? img.id 
+                : srcToIdMap.get(img.src);
+              
+              if (imageId) {
+                imageOrders[imageId] = index;
               }
             });
             
@@ -1024,6 +1054,7 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
           formData.append("file", img.file);
           formData.append("modelId", modelId); // Use modelId instead of slug
           formData.append("type", index === 0 ? "featured" : "gallery");
+          formData.append("order", String(index)); // Pass explicit order
           formData.append("passwordHash", passwordHash);
 
           try {

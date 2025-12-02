@@ -30,6 +30,7 @@ export async function PUT(request: NextRequest) {
     const slug = formData.get("slug") as string | null;
     const modelId = formData.get("modelId") as string | null;
     const type = formData.get("type") as string; // 'featured' or 'gallery'
+    const orderParam = formData.get("order") as string | null; // Explicit order from frontend
 
     if (!file) {
       return NextResponse.json(
@@ -96,7 +97,7 @@ export async function PUT(request: NextRequest) {
         
         // Verify model exists
         const model = await db
-          .select({ id: schema.models.id })
+          .select()
           .from(schema.models)
           .where(eq(schema.models.id, modelIdNum))
           .limit(1);
@@ -109,7 +110,7 @@ export async function PUT(request: NextRequest) {
         }
       } else if (slug) {
         const model = await db
-          .select({ id: schema.models.id })
+          .select()
           .from(schema.models)
           .where(eq(schema.models.slug, slug))
           .limit(1);
@@ -133,7 +134,7 @@ export async function PUT(request: NextRequest) {
         // Featured image is stored in images table with order 0
         // First, check if there's already a featured image (order 0)
         const existingFeatured = await db
-          .select({ id: schema.images.id })
+          .select()
           .from(schema.images)
           .where(and(
             eq(schema.images.modelId, modelIdNum),
@@ -159,6 +160,7 @@ export async function PUT(request: NextRequest) {
             .update(schema.images)
             .set({
               data: dataUri,
+              alt: `${modelSlug} - ${originalName}`,
             } as any)
             .where(eq(schema.images.id, imageId));
         } else {
@@ -166,21 +168,15 @@ export async function PUT(request: NextRequest) {
           await db.insert(schema.images).values({
             id: imageId,
             modelId: modelIdNum,
+            type: "image",
+            src: `db://${imageId}`,
+            alt: `${modelSlug} - ${originalName}`,
             data: dataUri,
             order: 0, // Featured images have order 0
           } as any);
         }
       } else {
-        // Get current max order for this model
-        const existingImages = await db
-          .select({ order: schema.images.order })
-          .from(schema.images)
-          .where(eq(schema.images.modelId, modelIdNum));
-        
-        const maxOrder = existingImages.length > 0
-          ? Math.max(...existingImages.map((img) => img.order))
-          : -1;
-        
+        // Gallery image - use temporary high order to avoid conflicts, will be set correctly by reorder
         const originalName = file.name.replace(/\.[^/.]+$/, "");
         const imageId = randomUUID();
         
@@ -193,12 +189,30 @@ export async function PUT(request: NextRequest) {
         
         const modelSlug = model[0]?.slug || "model";
         
+        // Get current max order to assign a temporary high order that won't conflict
+        // The reorder endpoint will set the final order correctly
+        const existingImages = await db
+          .select({ order: schema.images.order })
+          .from(schema.images)
+          .where(eq(schema.images.modelId, modelIdNum));
+        
+        const maxOrder = existingImages.length > 0
+          ? Math.max(...existingImages.map((img) => img.order ?? 0))
+          : -1;
+        
+        // Use a temporary high order (10000 + timestamp component) to avoid conflicts
+        // This ensures parallel uploads don't conflict, and reorder will set final orders
+        const tempOrder = 10000 + Date.now() % 10000 + Math.floor(Math.random() * 1000);
+        
         // Insert new image into images table with base64 data
         await db.insert(schema.images).values({
           id: imageId,
           modelId: modelIdNum,
+          type: "image",
+          src: `db://${imageId}`, // Placeholder since we're using base64 data
+          alt: `${modelSlug} - ${originalName}`,
           data: dataUri,
-          order: maxOrder + 1,
+          order: tempOrder, // Temporary high order, will be corrected by reorder
         } as any);
       }
     } catch (dbError) {
