@@ -77,6 +77,7 @@ export async function GET() {
           },
           instagram: row.instagram || undefined,
           featuredImage: "", // Will be set from images
+          featuredImageId: "",
           displayOrder: row.displayOrder ?? 0,
           gallery: [],
         });
@@ -90,6 +91,7 @@ export async function GET() {
         if (row.imageOrder === 0) {
           // Image with order 0 is the featured image
           model.featuredImage = imageSrc;
+          model.featuredImageId = row.imageId;
         } else {
           // Other images go to gallery
           model.gallery.push({
@@ -107,6 +109,7 @@ export async function GET() {
       if (!model.featuredImage && model.gallery.length > 0) {
         // Use the first gallery image as featured
         model.featuredImage = model.gallery[0].src;
+        model.featuredImageId = model.gallery[0].id;
         // Remove it from gallery since it's now featured
         model.gallery.shift();
       }

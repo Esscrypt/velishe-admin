@@ -302,6 +302,8 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
   const [pendingAction, setPendingAction] = useState<(() => void) | null>(null);
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [isReordering, setIsReordering] = useState(false);
+  const [reorderSuccess, setReorderSuccess] = useState(false);
   const [images, setImages] = useState<Array<{ 
     file: File; 
     preview: string; 
@@ -334,11 +336,12 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
   useEffect(() => {
     if (model) {
       // Combine featured image with gallery for unified drag-and-drop
-      // The first item in the combined list will be the featured image
-      const combinedGallery = model.featuredImage 
+      // The first item in the combined list will be the featured image (order 0)
+      const featuredImageId = (model as any).featuredImageId;
+      const combinedGallery = model.featuredImage && featuredImageId
         ? [
             {
-              id: "featured",
+              id: featuredImageId,
               type: "image" as const,
               src: model.featuredImage,
               alt: `${model.name} - Featured`,
@@ -849,7 +852,7 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
         
         // Identify new images (those with data and IDs starting with "new-" or no real ID)
         const newGalleryItems = formData.gallery?.filter((item) => 
-          item.data && (item.id?.startsWith("new-") || !item.id || item.id === "featured")
+          item.data && (item.id?.startsWith("new-") || !item.id)
         ) || [];
 
         // Upload new images via PUT requests in parallel
@@ -1333,28 +1336,49 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
                     
                     // Update order in database if model exists
                     if (model?.id && password) {
+                      setIsReordering(true);
+                      setReorderSuccess(false);
                       try {
                         const passwordHash = await hashPassword(password);
-                        const orderedImageIds = newGallery
-                          .map((img) => img.id)
-                          .filter((id): id is string => id !== undefined && id !== "featured");
+                        // Create mapping of imageId -> order (starting from 0)
+                        // The first image (index 0) is the featured image
+                        const imageOrders: Record<string, number> = {};
+                        newGallery.forEach((img, index) => {
+                          if (img.id) {
+                            imageOrders[img.id] = index;
+                          }
+                        });
                         
-                        if (orderedImageIds.length > 0) {
-                          await fetch("/api/images/reorder", {
+                        if (Object.keys(imageOrders).length > 0) {
+                          const response = await fetch("/api/images/reorder", {
                             method: "POST",
                             headers: { "Content-Type": "application/json" },
                             body: JSON.stringify({
                               modelId: model.id,
-                              orderedImageIds,
+                              imageOrders,
                               passwordHash,
                             }),
                           });
+                          
+                          if (response.ok) {
+                            setReorderSuccess(true);
+                            // Clear success message after 3 seconds
+                            setTimeout(() => setReorderSuccess(false), 3000);
+                            // Trigger refetch of models
+                            onSave();
+                          } else {
+                            throw new Error("Failed to reorder images");
+                          }
                         }
                       } catch (error) {
                         console.error("Error reordering images:", error);
+                        alert("Failed to reorder images. Please try again.");
+                      } finally {
+                        setIsReordering(false);
+                      }
                     }
                   }
-                }}
+                }
               >
                 <SortableContext
                   items={formData.gallery.map((item) => item.id || item.src)}
@@ -1519,12 +1543,24 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
             </div>
           </div>
 
+          {reorderSuccess && (
+            <div className="bg-green-50 border border-green-200 rounded-md p-3 text-sm text-green-800 mb-4">
+              ✓ Images reordered successfully!
+            </div>
+          )}
+          
+          {isReordering && (
+            <div className="bg-blue-50 border border-blue-200 rounded-md p-3 text-sm text-blue-800 mb-4">
+              Reordering images...
+            </div>
+          )}
+
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose}>
               Cancel
             </Button>
-            <Button type="submit" disabled={saving}>
-              {saving ? "Saving..." : "Save"}
+            <Button type="submit" disabled={saving || isReordering}>
+              {saving ? "Saving..." : isReordering ? "Reordering..." : "Save"}
             </Button>
           </DialogFooter>
         </form>

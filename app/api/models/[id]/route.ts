@@ -50,6 +50,7 @@ export async function GET(
     
     // Separate featured image (order 0) from gallery
     let featuredImageSrc = "";
+    let featuredImageId = "";
     const gallery: Array<{ id: string; type: "image"; src: string; alt: string }> = [];
     
     for (const row of rows) {
@@ -66,6 +67,7 @@ export async function GET(
         // Image with order 0 is the featured image
         if (row.imageOrder === 0) {
           featuredImageSrc = imageSrc;
+          featuredImageId = row.imageId;
         } else {
           // Other images go to gallery - ensure src is always set
           gallery.push({
@@ -81,6 +83,7 @@ export async function GET(
     // If no featured image (order 0) but we have gallery images, use the first one
     if (!featuredImageSrc && gallery.length > 0) {
       featuredImageSrc = gallery[0].src;
+      featuredImageId = gallery[0].id;
       gallery.shift(); // Remove it from gallery since it's now featured
     }
 
@@ -99,6 +102,7 @@ export async function GET(
       },
       instagram: firstRow.instagram || undefined,
       featuredImage: featuredImageSrc, // Empty string if no images, never null
+      featuredImageId: featuredImageId || undefined,
       gallery,
     });
   } catch (error) {

@@ -127,6 +127,7 @@ export default function AdminPage() {
   );
 
   const fetchModels = async () => {
+    setLoading(true);
     try {
       const response = await fetch("/api/models");
       const data = await response.json();
@@ -269,13 +270,7 @@ export default function AdminPage() {
     }
   };
 
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-xl">Loading...</div>
-      </div>
-    );
-  }
+  // Loading state is now shown inline with the progress bar
 
   const handlePasswordSuccess = (passwordHash: string) => {
     if (passwordDialogAction) {
@@ -297,6 +292,15 @@ export default function AdminPage() {
           </div>
         </div>
 
+        {loading && (
+          <div className="mb-4">
+            <div className="w-full bg-gray-200 rounded-full h-2.5">
+              <div className="bg-blue-600 h-2.5 rounded-full animate-pulse" style={{ width: "100%" }}></div>
+            </div>
+            <p className="text-sm text-gray-600 mt-2">Loading models...</p>
+          </div>
+        )}
+
         {showForm && (
           <ModelForm
             model={editingModel}
@@ -306,31 +310,33 @@ export default function AdminPage() {
           />
         )}
 
-        <DndContext
-          sensors={sensors}
-          collisionDetection={closestCenter}
-          onDragEnd={handleDragEnd}
-        >
-          <SortableContext
-            items={models.map((m) => m.id)}
-            strategy={verticalListSortingStrategy}
+        {!loading && (
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragEnd={handleDragEnd}
           >
-            {models.length === 0 ? (
-              <div className="text-center py-12 text-gray-500">
-                No models found. Click "Add Model" to create one.
-              </div>
-            ) : (
-              models.map((model) => (
-                <SortableItem
-                  key={model.id}
-                  model={model}
-                  onEdit={handleEdit}
-                  onDelete={handleDelete}
-                />
-              ))
-            )}
-          </SortableContext>
-        </DndContext>
+            <SortableContext
+              items={models.map((m) => m.id)}
+              strategy={verticalListSortingStrategy}
+            >
+              {models.length === 0 ? (
+                <div className="text-center py-12 text-gray-500">
+                  No models found. Click "Add Model" to create one.
+                </div>
+              ) : (
+                models.map((model) => (
+                  <SortableItem
+                    key={model.id}
+                    model={model}
+                    onEdit={handleEdit}
+                    onDelete={handleDelete}
+                  />
+                ))
+              )}
+            </SortableContext>
+          </DndContext>
+        )}
       </div>
 
       <PasswordDialog

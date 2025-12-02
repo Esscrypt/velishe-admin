@@ -1,4 +1,4 @@
-import { pgTable, text, integer, timestamp, serial } from "drizzle-orm/pg-core";
+import { pgTable, text, integer, timestamp, serial, unique } from "drizzle-orm/pg-core";
 
 export interface ModelStats {
   height: string;
@@ -31,9 +31,11 @@ export const images = pgTable("images", {
     .notNull()
     .references(() => models.id, { onDelete: "cascade" }),
   data: text("data").notNull(), // Base64 encoded image data
-  order: integer("order").notNull().default(0),
+  order: integer("order").notNull(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
-});
+}, (table) => ({
+  modelOrderUnique: unique().on(table.modelId, table.order),
+}));
 
 export type ModelRow = typeof models.$inferSelect;
 export type ModelInsert = typeof models.$inferInsert;

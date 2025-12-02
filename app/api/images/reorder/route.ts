@@ -16,28 +16,59 @@ export async function POST(request: NextRequest) {
     }
 
     const db = getDb();
-    const { modelId, orderedImageIds } = body as { 
+    const { modelId, imageOrders } = body as { 
       modelId: string; 
-      orderedImageIds: string[] 
+      imageOrders: Record<string, number>; // { imageId: order }
     };
 
-    if (!modelId || !Array.isArray(orderedImageIds)) {
+    if (!modelId || !imageOrders || typeof imageOrders !== 'object') {
       return NextResponse.json(
-        { error: "modelId and orderedImageIds array are required" },
+        { error: "modelId and imageOrders object are required" },
         { status: 400 }
       );
     }
 
-    // Update order for each image
-    for (let index = 0; index < orderedImageIds.length; index++) {
-      const imageId = orderedImageIds[index];
-      await db
-        .update(schema.images)
-        .set({ order: index } as any)
-        .where(eq(schema.images.id, imageId));
+    if (!db) {
+      return NextResponse.json(
+        { error: "Database connection not available" },
+        { status: 500 }
+      );
     }
 
-    // Featured image is automatically the image with order 0, no need to update models table
+    const modelIdNum = Number.parseInt(modelId, 10);
+    if (Number.isNaN(modelIdNum)) {
+      return NextResponse.json(
+        { error: "Invalid modelId" },
+        { status: 400 }
+      );
+    }
+
+    // Use a transaction to ensure all updates happen atomically
+    // This avoids unique constraint violations during reordering
+    await db.transaction(async (tx) => {
+      // Phase 1: Set all orders to temporary negative values to avoid conflicts
+      // Execute all Phase 1 updates in parallel
+      const imageIds = Object.keys(imageOrders);
+      await Promise.all(
+        imageIds.map((imageId, index) =>
+          tx
+            .update(schema.images)
+            .set({ order: -(index + 10000) } as any) // Use large negative values to avoid conflicts
+            .where(eq(schema.images.id, imageId))
+        )
+      );
+      
+      // Phase 2: Set to final order values from the imageOrders mapping
+      // Execute all Phase 2 updates in parallel
+      await Promise.all(
+        Object.entries(imageOrders).map(([imageId, order]) =>
+          tx
+            .update(schema.images)
+            .set({ order } as any)
+            .where(eq(schema.images.id, imageId))
+        )
+      );
+    });
 
     return NextResponse.json({ success: true });
   } catch (error) {
