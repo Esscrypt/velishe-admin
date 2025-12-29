@@ -23,8 +23,8 @@ async function main() {
     envContent = "";
   }
   
-  // Update or add ADMIN_PASSWORD_HASH
-  const hashLine = `ADMIN_PASSWORD_HASH=${hash}`;
+  // Update or add ADMIN_PASSWORD_HASH (quoted to handle $ characters in bcrypt hash)
+  const hashLine = `ADMIN_PASSWORD_HASH="${hash}"`;
   
   if (envContent.includes("ADMIN_PASSWORD_HASH=")) {
     // Replace existing line

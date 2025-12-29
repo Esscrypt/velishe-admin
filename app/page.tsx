@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { Plus, Edit, Trash2, GripVertical } from "lucide-react";
 import ModelForm from "@/components/ModelForm";
-import PasswordDialog, { getCachedPasswordHash, getCachedPassword, clearCachedPasswordHash } from "@/components/PasswordDialog";
+import PasswordDialog, { getCachedPasswordHash, clearCachedPasswordHash } from "@/components/PasswordDialog";
 import { Button } from "@/components/ui/button";
 import { CSS } from "@dnd-kit/utilities";
 import {
@@ -121,6 +121,10 @@ export default function AdminPage() {
   const [passwordDialogDescription, setPasswordDialogDescription] = useState("Please enter your admin password to continue.");
   const [hasPendingReorder, setHasPendingReorder] = useState(false);
   const [isReordering, setIsReordering] = useState(false);
+  const [currentPage, setCurrentPage] = useState(0);
+  const [totalModels, setTotalModels] = useState(0);
+  const [loadingEditModel, setLoadingEditModel] = useState(false);
+  const modelsPerPage = 10;
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -129,16 +133,24 @@ export default function AdminPage() {
     })
   );
 
-  const fetchModels = async () => {
+  const fetchModels = async (offset: number = 0) => {
     setLoading(true);
     try {
-      const response = await fetch("/api/models");
+      const response = await fetch(`/api/models?limit=${modelsPerPage}&offset=${offset}`);
       const data = await response.json();
       // Ensure data is always an array
       const modelsArray = Array.isArray(data) ? data : [];
       setModels(modelsArray);
       setOriginalModels(modelsArray);
       setHasPendingReorder(false);
+      
+      // Update total count: if we got fewer models than requested, we've reached the end
+      if (modelsArray.length < modelsPerPage) {
+        setTotalModels(offset + modelsArray.length);
+      } else {
+        // We might have more, so set a minimum total (will be updated when we reach the end)
+        setTotalModels(Math.max(totalModels, offset + modelsPerPage));
+      }
     } catch (error) {
       console.error("Error fetching models:", error);
       setModels([]); // Set empty array on error
@@ -148,6 +160,7 @@ export default function AdminPage() {
       setLoading(false);
     }
   };
+
 
   const fetchSingleModel = async (id: string) => {
     try {
@@ -193,8 +206,22 @@ export default function AdminPage() {
   };
 
   useEffect(() => {
-    fetchModels();
-  }, []);
+    const offset = currentPage * modelsPerPage;
+    fetchModels(offset);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentPage]);
+
+  const handleNextPage = () => {
+    if (models.length === modelsPerPage) {
+      setCurrentPage(prev => prev + 1);
+    }
+  };
+
+  const handlePreviousPage = () => {
+    if (currentPage > 0) {
+      setCurrentPage(prev => prev - 1);
+    }
+  };
 
   const performDelete = async (id: string, passwordHash: string) => {
     try {
@@ -238,19 +265,31 @@ export default function AdminPage() {
     setShowPasswordDialog(true);
   };
 
-  const handleEdit = (model: Model) => {
-    const cachedHash = getCachedPasswordHash();
-    if (cachedHash) {
-      setEditingModel(model);
-      setShowForm(true);
-    } else {
-      setPasswordDialogTitle("Edit Model");
-      setPasswordDialogDescription("Please enter your admin password to edit this model.");
-      setPasswordDialogAction(() => () => {
-        setEditingModel(model);
+  const handleEdit = async (model: Model) => {
+    setLoadingEditModel(true);
+    try {
+      // Fetch full model data with all images before opening form
+      const fullModel = await fetchSingleModel(model.id);
+      if (!fullModel) {
+        alert("Failed to fetch model data. Please try again.");
+        return;
+      }
+
+      const cachedHash = getCachedPasswordHash();
+      if (cachedHash) {
+        setEditingModel(fullModel);
         setShowForm(true);
-      });
-      setShowPasswordDialog(true);
+      } else {
+        setPasswordDialogTitle("Edit Model");
+        setPasswordDialogDescription("Please enter your admin password to edit this model.");
+        setPasswordDialogAction(() => () => {
+          setEditingModel(fullModel);
+          setShowForm(true);
+        });
+        setShowPasswordDialog(true);
+      }
+    } finally {
+      setLoadingEditModel(false);
     }
   };
 
@@ -285,7 +324,8 @@ export default function AdminPage() {
         }
       } else {
         // New model was created - need to reload all to get the new model in the list
-        fetchModels();
+        const offset = currentPage * modelsPerPage;
+        fetchModels(offset);
       }
     }
     // If no model ID provided, form was closed without saving - no reload needed
@@ -406,12 +446,21 @@ export default function AdminPage() {
           </div>
         )}
 
+        {loadingEditModel && (
+          <div className="mb-4">
+            <div className="w-full bg-gray-200 rounded-full h-2.5">
+              <div className="bg-blue-600 h-2.5 rounded-full animate-pulse" style={{ width: "100%" }}></div>
+            </div>
+            <p className="text-sm text-gray-600 mt-2">Loading model data...</p>
+          </div>
+        )}
+
         {showForm && (
           <ModelForm
             model={editingModel}
             onClose={() => handleFormClose()}
             onSave={(modelId?: string) => handleFormClose(modelId)}
-            password={getCachedPassword() || ""}
+            password={getCachedPasswordHash() || ""}
           />
         )}
 
@@ -441,6 +490,34 @@ export default function AdminPage() {
               )}
             </SortableContext>
           </DndContext>
+        )}
+
+        {/* Pagination Controls */}
+        {!loading && models.length > 0 && (
+          <div className="flex justify-between items-center mt-8 pt-8 border-t border-gray-200">
+            <div className="text-sm text-gray-600">
+              Showing {currentPage * modelsPerPage + 1} - {currentPage * modelsPerPage + models.length} {totalModels > 0 && totalModels <= currentPage * modelsPerPage + models.length ? `of ${totalModels}` : ""} models
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                onClick={handlePreviousPage}
+                disabled={currentPage === 0 || loading}
+              >
+                Previous
+              </Button>
+              <span className="text-sm text-gray-600 px-4">
+                Page {currentPage + 1}
+              </span>
+              <Button
+                variant="outline"
+                onClick={handleNextPage}
+                disabled={models.length < modelsPerPage || loading}
+              >
+                Next
+              </Button>
+            </div>
+          </div>
         )}
       </div>
 

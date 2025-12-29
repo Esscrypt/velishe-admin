@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useEffect } from "react";
 import {
   Dialog,
   DialogContent,
@@ -13,7 +13,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { hashPassword } from "@/lib/client-auth";
-import { Lock } from "lucide-react";
+import { Lock, Eye, EyeOff } from "lucide-react";
+import { useState } from "react";
 
 interface PasswordDialogProps {
   open: boolean;
@@ -23,7 +24,6 @@ interface PasswordDialogProps {
   description?: string;
 }
 
-const PASSWORD_CACHE_KEY = "admin_password";
 const PASSWORD_HASH_CACHE_KEY = "admin_password_hash";
 const CACHE_DURATION = 30 * 60 * 1000; // 30 minutes
 
@@ -37,6 +37,7 @@ export default function PasswordDialog({
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   useEffect(() => {
     if (open) {
@@ -57,16 +58,16 @@ export default function PasswordDialog({
     setLoading(true);
 
     try {
-      if (!password.trim()) {
+      const trimmedPassword = password.trim();
+      if (!trimmedPassword) {
         setError("Password cannot be empty");
         setLoading(false);
         return;
       }
 
-      const passwordHash = await hashPassword(password);
+      const passwordHash = await hashPassword(trimmedPassword);
       
-      // Cache both password and hash
-      cachePassword(password);
+      // Cache only the hash, not the raw password
       cachePasswordHash(passwordHash);
       
       onSuccess(passwordHash);
@@ -100,20 +101,34 @@ export default function PasswordDialog({
           <div className="space-y-4 py-4">
             <div className="space-y-2">
               <Label htmlFor="password">Password</Label>
-              <Input
-                id="password"
-                type="password"
-                value={password}
-                onChange={(e) => {
-                  setPassword(e.target.value);
-                  setError("");
-                }}
-                onKeyDown={handleKeyDown}
-                placeholder="Enter admin password"
-                autoFocus
-                disabled={loading}
-                className={error ? "border-red-500" : ""}
-              />
+              <div className="relative">
+                <Input
+                  id="password"
+                  type={showPassword ? "text" : "password"}
+                  value={password}
+                  onChange={(e) => {
+                    setPassword(e.target.value);
+                    setError("");
+                  }}
+                  onKeyDown={handleKeyDown}
+                  placeholder="Enter admin password"
+                  autoFocus
+                  disabled={loading}
+                  className={error ? "border-red-500 pr-10" : "pr-10"}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700 focus:outline-none"
+                  tabIndex={-1}
+                >
+                  {showPassword ? (
+                    <EyeOff className="h-4 w-4" />
+                  ) : (
+                    <Eye className="h-4 w-4" />
+                  )}
+                </button>
+              </div>
               {error && (
                 <p className="text-sm text-red-500">{error}</p>
               )}
@@ -157,7 +172,6 @@ export function getCachedPasswordHash(): string | null {
     }
     
     // Cache expired, remove it
-    sessionStorage.removeItem(PASSWORD_CACHE_KEY);
     sessionStorage.removeItem(PASSWORD_HASH_CACHE_KEY);
     return null;
   } catch {
@@ -183,55 +197,10 @@ export function cachePasswordHash(hash: string): void {
 }
 
 /**
- * Get cached password (not hash)
- */
-export function getCachedPassword(): string | null {
-  if (typeof window === "undefined") return null;
-  
-  try {
-    const cached = sessionStorage.getItem(PASSWORD_CACHE_KEY);
-    if (!cached) return null;
-    
-    const { password, timestamp } = JSON.parse(cached);
-    const now = Date.now();
-    
-    // Check if cache is still valid (within duration)
-    if (now - timestamp < CACHE_DURATION) {
-      return password;
-    }
-    
-    // Cache expired, remove it
-    sessionStorage.removeItem(PASSWORD_CACHE_KEY);
-    sessionStorage.removeItem(PASSWORD_HASH_CACHE_KEY);
-    return null;
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Cache password with timestamp
- */
-export function cachePassword(password: string): void {
-  if (typeof window === "undefined") return;
-  
-  try {
-    const data = {
-      password,
-      timestamp: Date.now(),
-    };
-    sessionStorage.setItem(PASSWORD_CACHE_KEY, JSON.stringify(data));
-  } catch (err) {
-    console.error("Failed to cache password:", err);
-  }
-}
-
-/**
  * Clear cached password hash
  */
 export function clearCachedPasswordHash(): void {
   if (typeof window === "undefined") return;
-  sessionStorage.removeItem(PASSWORD_CACHE_KEY);
   sessionStorage.removeItem(PASSWORD_HASH_CACHE_KEY);
 }
 

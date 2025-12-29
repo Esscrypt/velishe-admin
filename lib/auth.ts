@@ -3,13 +3,43 @@ import { config } from "dotenv";
 import { createHash } from "node:crypto";
 
 // Load .env.local first (takes precedence), then .env
-config({ path: ".env.local" });
-config();
+// Force reload to avoid caching issues - override existing values
+const envResult = config({ path: ".env.local", override: true });
+config({ override: true });
 
-const ADMIN_PASSWORD_HASH = process.env.ADMIN_PASSWORD_HASH;
+// Read the hash after loading
+let ADMIN_PASSWORD_HASH = process.env.ADMIN_PASSWORD_HASH;
 
-if (!ADMIN_PASSWORD_HASH) {
-  console.warn("ADMIN_PASSWORD_HASH not set in environment variables");
+// Debug logging to diagnose issues
+if (typeof window === "undefined") {
+  if (!ADMIN_PASSWORD_HASH) {
+    console.warn("[auth] ADMIN_PASSWORD_HASH not set in environment variables");
+    if (envResult.error) {
+      console.error("[auth] Error loading .env.local:", envResult.error);
+    }
+    // Check if .env.local exists
+    try {
+      const fs = require("fs");
+      const envContent = fs.readFileSync(".env.local", "utf-8");
+      const hasAdminHash = envContent.includes("ADMIN_PASSWORD_HASH");
+      console.log("[auth] .env.local exists:", true);
+      console.log("[auth] Contains ADMIN_PASSWORD_HASH:", hasAdminHash);
+      if (hasAdminHash) {
+        const match = envContent.match(/ADMIN_PASSWORD_HASH=(.+)/);
+        if (match) {
+          console.log("[auth] Raw line value length:", match[1]?.length);
+          console.log("[auth] Raw line first 30 chars:", match[1]?.substring(0, 30));
+        }
+      }
+    } catch (e) {
+      console.log("[auth] Could not read .env.local file");
+    }
+  } else {
+    console.log("[auth] ADMIN_PASSWORD_HASH loaded successfully");
+    console.log("[auth] Length:", ADMIN_PASSWORD_HASH.length);
+    console.log("[auth] First 30 chars:", ADMIN_PASSWORD_HASH.substring(0, 30));
+    console.log("[auth] Starts with $2:", ADMIN_PASSWORD_HASH.startsWith("$2"));
+  }
 }
 
 /**

@@ -34,6 +34,7 @@ export async function GET(
         eyeColor: schema.models.eyeColor,
         instagram: schema.models.instagram,
         imageId: schema.images.id,
+        imageType: schema.images.type,
         imageData: schema.images.data,
         imageOrder: schema.images.order,
       })
@@ -48,15 +49,17 @@ export async function GET(
 
     const firstRow = rows[0];
     
-    // Separate featured image (order 0) from gallery
+    // Separate featured image (order 0) from gallery and digitals
     let featuredImageSrc = "";
     let featuredImageId = "";
     const gallery: Array<{ id: string; type: "image"; src: string; alt: string }> = [];
+    const digitals: Array<{ id: string; type: "image"; src: string; alt: string }> = [];
     
     for (const row of rows) {
       // Only process rows that have image data
       if (row.imageId && row.imageData) {
         const imageSrc = row.imageData; // This is the data URI from the database (e.g., "data:image/webp;base64,...")
+        const imageType = row.imageType || "image";
         
         // Ensure imageSrc is a valid string
         if (typeof imageSrc !== 'string' || imageSrc.trim() === '') {
@@ -64,10 +67,18 @@ export async function GET(
           continue;
         }
         
-        // Image with order 0 is the featured image
-        if (row.imageOrder === 0) {
+        // Image with order 0 is the featured image (only for regular images, not digitals)
+        if (row.imageOrder === 0 && imageType === "image") {
           featuredImageSrc = imageSrc;
           featuredImageId = row.imageId;
+        } else if (imageType === "digital") {
+          // Digitals go to digitals array
+          digitals.push({
+            id: row.imageId,
+            type: "image",
+            src: imageSrc,
+            alt: "",
+          });
         } else {
           // Other images go to gallery - ensure src is always set
           gallery.push({
@@ -104,6 +115,7 @@ export async function GET(
       featuredImage: featuredImageSrc, // Empty string if no images, never null
       featuredImageId: featuredImageId || undefined,
       gallery,
+      digitals,
     });
   } catch (error) {
     console.error("Error fetching model:", error);

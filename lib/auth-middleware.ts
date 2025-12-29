@@ -32,7 +32,9 @@ export async function verifyAuth(
     }
 
     const isValid = await verifyPasswordHash(passwordHash);
+    console.log("[verifyAuth] Password hash verification result:", isValid);
     if (!isValid) {
+      console.log("[verifyAuth] Returning 401 - Invalid password");
       return {
         authorized: false,
         response: NextResponse.json(
@@ -42,6 +44,7 @@ export async function verifyAuth(
       };
     }
 
+    console.log("[verifyAuth] Authentication successful");
     return { authorized: true, body };
   } catch (error) {
     console.error("Error verifying auth:", error);

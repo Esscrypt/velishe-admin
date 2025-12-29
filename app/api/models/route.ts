@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getDb, schema, eq, asc } from "@/lib/db";
+import { getDb, schema, eq, asc, inArray, and } from "@/lib/db";
 import type { ModelInsert } from "@/lib/db/schema";
 import { verifyAuth } from "@/lib/auth-middleware";
 import { config } from "dotenv";
@@ -17,7 +17,7 @@ export function generateSlug(name: string): string {
     .replace(/^-+|-+$/g, ""); // Remove leading/trailing hyphens
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   // GET doesn't require auth (read-only)
   try {
     const db = getDb();
@@ -27,7 +27,59 @@ export async function GET() {
       return NextResponse.json({ error: "Database connection not available" }, { status: 500 });
     }
     
-    // Use LEFT JOIN to get all models with their images in a single query
+    // Parse pagination parameters
+    const url = new URL(request.url);
+    const limitParam = url.searchParams.get('limit');
+    const offsetParam = url.searchParams.get('offset');
+    
+    const modelLimit = limitParam ? Number.parseInt(limitParam, 10) : 10;
+    const modelOffset = offsetParam ? Number.parseInt(offsetParam, 10) : 0;
+    
+    // Validate pagination parameters
+    if (limitParam && (Number.isNaN(modelLimit) || modelLimit < 1)) {
+      return NextResponse.json(
+        { error: "Invalid limit parameter" },
+        { status: 400 }
+      );
+    }
+    
+    if (offsetParam && (Number.isNaN(modelOffset) || modelOffset < 0)) {
+      return NextResponse.json(
+        { error: "Invalid offset parameter" },
+        { status: 400 }
+      );
+    }
+    
+    // Get models with pagination, ordered by displayOrder
+    const modelsQuery = db
+      .select({
+        modelId: schema.models.id,
+        slug: schema.models.slug,
+        name: schema.models.name,
+        height: schema.models.height,
+        bust: schema.models.bust,
+        waist: schema.models.waist,
+        hips: schema.models.hips,
+        shoeSize: schema.models.shoeSize,
+        hairColor: schema.models.hairColor,
+        eyeColor: schema.models.eyeColor,
+        instagram: schema.models.instagram,
+        displayOrder: schema.models.displayOrder,
+      })
+      .from(schema.models)
+      .orderBy(asc(schema.models.displayOrder))
+      .limit(modelLimit)
+      .offset(modelOffset);
+    
+    const modelRows = await modelsQuery;
+    
+    if (modelRows.length === 0) {
+      return NextResponse.json([]);
+    }
+    
+    const modelIds = modelRows.map(row => row.modelId);
+    
+    // Get only the featured image (order 0) for each model
     const rows = await db
       .select({
         modelId: schema.models.id,
@@ -47,12 +99,23 @@ export async function GET() {
         imageOrder: schema.images.order,
       })
       .from(schema.models)
-      .leftJoin(schema.images, eq(schema.models.id, schema.images.modelId))
-      .orderBy(asc(schema.models.displayOrder), asc(schema.images.order));
+      .leftJoin(
+        schema.images,
+        // Only join featured images (order 0)
+        and(
+          eq(schema.models.id, schema.images.modelId),
+          eq(schema.images.order, 0)
+        )
+      )
+      .where(
+        // Only get models in our limited set
+        inArray(schema.models.id, modelIds)
+      )
+      .orderBy(asc(schema.models.displayOrder));
     
     console.log(`[GET /api/models] Found ${rows.length} rows from database`);
     
-    // Group by model and collect images
+    // Group by model and collect only the featured image (order 0)
     const modelsMap = new Map<number, any>();
     
     for (const row of rows) {
@@ -79,39 +142,15 @@ export async function GET() {
           featuredImage: "", // Will be set from images
           featuredImageId: "",
           displayOrder: row.displayOrder ?? 0,
-          gallery: [],
+          gallery: [], // Empty gallery - only featured image is loaded
         });
       }
       
-      // Add image to gallery or set as featured if order is 0
-      if (row.imageId && row.imageData) {
+      // Only set featured image (order 0)
+      if (row.imageId && row.imageData && row.imageOrder === 0) {
         const model = modelsMap.get(row.modelId)!;
-        const imageSrc = row.imageData;
-        
-        if (row.imageOrder === 0) {
-          // Image with order 0 is the featured image
-          model.featuredImage = imageSrc;
-          model.featuredImageId = row.imageId;
-        } else {
-          // Other images go to gallery
-          model.gallery.push({
-            id: row.imageId,
-            type: "image",
-            src: imageSrc,
-            alt: "",
-          });
-        }
-      }
-    }
-    
-    // For models without a featured image (order 0), use the first image if available
-    for (const model of modelsMap.values()) {
-      if (!model.featuredImage && model.gallery.length > 0) {
-        // Use the first gallery image as featured
-        model.featuredImage = model.gallery[0].src;
-        model.featuredImageId = model.gallery[0].id;
-        // Remove it from gallery since it's now featured
-        model.gallery.shift();
+        model.featuredImage = row.imageData;
+        model.featuredImageId = row.imageId;
       }
     }
     

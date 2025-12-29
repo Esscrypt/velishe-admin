@@ -1,8 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { hashPassword } from "@/lib/client-auth";
-import PasswordDialog, { getCachedPassword, getCachedPasswordHash } from "@/components/PasswordDialog";
+import PasswordDialog, { getCachedPasswordHash } from "@/components/PasswordDialog";
 import {
   Dialog,
   DialogContent,
@@ -56,24 +55,25 @@ interface Model {
   instagram?: string;
   featuredImage?: string;
   gallery?: GalleryItem[];
+  digitals?: GalleryItem[];
 }
 
 interface ModelFormProps {
   model?: Model | null;
   onClose: () => void;
   onSave: (modelId?: string) => void;
-  password?: string;
+  password?: string; // Deprecated: use passwordHash instead. Kept for backward compatibility.
 }
 
 function SortableGalleryItem({
   item,
-  password,
+  passwordHash,
   modelId,
   onDelete,
   onFullscreen,
 }: Readonly<{
   item: GalleryItem;
-  password: string;
+  passwordHash: string;
   modelId?: string;
   onDelete: (itemId: string) => void;
   onFullscreen: (item: GalleryItem) => void;
@@ -120,9 +120,8 @@ function SortableGalleryItem({
         size="sm"
         className="absolute top-1 right-1"
         onClick={async () => {
-          if (item.id && password && modelId) {
+          if (item.id && passwordHash && modelId) {
             try {
-              const passwordHash = await hashPassword(password);
               const response = await fetch(`/api/images/${item.id}`, {
                 method: "DELETE",
                 headers: { "Content-Type": "application/json" },
@@ -278,7 +277,7 @@ function SortableImageItem({
   );
 }
 
-export default function ModelForm({ model, onClose, onSave, password: initialPassword }: Readonly<ModelFormProps>) {
+export default function ModelForm({ model, onClose, onSave, password: initialPasswordHash }: Readonly<ModelFormProps>) {
   const [formData, setFormData] = useState({
     id: model?.id || "",
     slug: model?.slug || "",
@@ -295,9 +294,10 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
     instagram: model?.instagram || "",
     featuredImage: model?.featuredImage || "",
     gallery: model?.gallery || [],
+    digitals: model?.digitals || [],
   });
 
-  const [password, setPassword] = useState(initialPassword || "");
+  const [passwordHash, setPasswordHash] = useState<string>(initialPasswordHash || "");
   const [showPasswordDialog, setShowPasswordDialog] = useState(false);
   const [pendingAction, setPendingAction] = useState<(() => void) | null>(null);
   const [uploading, setUploading] = useState(false);
@@ -313,8 +313,20 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
     type: string;
     resizedData?: string;
   }>>([]);
+  const [digitals, setDigitals] = useState<Array<{ 
+    file: File; 
+    preview: string; 
+    data: string;
+    width: number;
+    height: number;
+    size: number;
+    type: string;
+    resizedData?: string;
+  }>>([]);
   const [fullscreenImage, setFullscreenImage] = useState<number | null>(null);
+  const [fullscreenDigital, setFullscreenDigital] = useState<number | null>(null);
   const [fullscreenGalleryItem, setFullscreenGalleryItem] = useState<GalleryItem | null>(null);
+  const [activeTab, setActiveTab] = useState<"images" | "digitals">("images");
   const [resizeOptions, setResizeOptions] = useState<Array<{
     label: string;
     maxWidth: number;
@@ -365,6 +377,7 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
         instagram: model.instagram || "",
         featuredImage: model.featuredImage || "",
         gallery: combinedGallery,
+        digitals: model.digitals || [],
       });
     } else {
       // Reset form when creating new model
@@ -384,6 +397,7 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
         instagram: "",
         featuredImage: "",
         gallery: [],
+        digitals: [],
       });
     }
   }, [model]);
@@ -770,6 +784,115 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
     });
   };
 
+  // Handle digitals file drop
+  const handleDigitalsDrop = useCallback(async (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    const files = Array.from(e.dataTransfer.files).filter((file) =>
+      file.type.startsWith("image/")
+    );
+
+    if (files.length === 0) return;
+
+    setUploading(true);
+    try {
+      const newDigitals = await Promise.all(
+        files.map(async (file) => {
+          const { resizedData, resizedFile, width, height } = await autoResizeImage(file);
+          const preview = URL.createObjectURL(resizedFile);
+          
+          return {
+            file: resizedFile,
+            preview,
+            data: resizedData,
+            width,
+            height,
+            size: resizedFile.size,
+            type: resizedFile.type,
+            resizedData,
+          };
+        })
+      );
+
+      if (model && formData.digitals && formData.digitals.length > 0) {
+        const newDigitalItems = newDigitals.map((img, index) => ({
+          id: `new-${Date.now()}-${index}`,
+          type: "image" as const,
+          src: img.preview,
+          alt: `${formData.name || "Digital"} - ${formData.digitals.length + index}`,
+          data: img.data,
+        }));
+        
+        setFormData({ ...formData, digitals: [...formData.digitals, ...newDigitalItems] });
+      } else {
+        setDigitals((prev) => [...prev, ...newDigitals]);
+      }
+    } catch (error) {
+      console.error("Error processing digitals:", error);
+      alert("Failed to process digitals");
+    } finally {
+      setUploading(false);
+    }
+  }, [model, formData]);
+
+  // Handle digitals file input
+  const handleDigitalsInput = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []).filter((file) =>
+      file.type.startsWith("image/")
+    );
+
+    if (files.length === 0) return;
+
+    setUploading(true);
+    try {
+      const newDigitals = await Promise.all(
+        files.map(async (file) => {
+          const { resizedData, resizedFile, width, height } = await autoResizeImage(file);
+          const preview = URL.createObjectURL(resizedFile);
+          
+          return {
+            file: resizedFile,
+            preview,
+            data: resizedData,
+            width,
+            height,
+            size: resizedFile.size,
+            type: resizedFile.type,
+            resizedData,
+          };
+        })
+      );
+
+      if (model && formData.digitals && formData.digitals.length > 0) {
+        const newDigitalItems = newDigitals.map((img, index) => ({
+          id: `new-${Date.now()}-${index}`,
+          type: "image" as const,
+          src: img.preview,
+          alt: `${formData.name || "Digital"} - ${formData.digitals.length + index}`,
+          data: img.data,
+        }));
+        
+        setFormData({ ...formData, digitals: [...formData.digitals, ...newDigitalItems] });
+      } else {
+        setDigitals((prev) => [...prev, ...newDigitals]);
+      }
+    } catch (error) {
+      console.error("Error processing digitals:", error);
+      alert("Failed to process digitals");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  // Remove digital
+  const removeDigital = (index: number) => {
+    setDigitals((prev) => {
+      const newDigitals = [...prev];
+      URL.revokeObjectURL(newDigitals[index].preview);
+      newDigitals.splice(index, 1);
+      return newDigitals;
+    });
+  };
+
   // Move image to first position (make it featured)
   const makeFeatured = (index: number) => {
     if (index === 0) return;
@@ -798,23 +921,20 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
     }
   };
 
-  const handlePasswordSuccess = (passwordHash: string) => {
-    // Get the actual password from cache
-    const cachedPassword = getCachedPassword();
-    if (cachedPassword) {
-      setPassword(cachedPassword);
-      setShowPasswordDialog(false);
-      if (pendingAction) {
-        pendingAction();
-        setPendingAction(null);
-      }
+  const handlePasswordSuccess = (hash: string) => {
+    // Store the password hash directly
+    setPasswordHash(hash);
+    setShowPasswordDialog(false);
+    if (pendingAction) {
+      pendingAction();
+      setPendingAction(null);
     }
   };
 
   const requestPassword = (action: () => void) => {
-    const cachedPassword = getCachedPassword();
-    if (cachedPassword) {
-      setPassword(cachedPassword);
+    const cachedHash = getCachedPasswordHash();
+    if (cachedHash) {
+      setPasswordHash(cachedHash);
       action();
     } else {
       setPendingAction(() => action);
@@ -825,9 +945,9 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!password) {
+    if (!passwordHash) {
       requestPassword(() => {
-        // Re-trigger submit after password is set
+        // Re-trigger submit after password hash is set
         const form = e.target as HTMLFormElement;
         form.requestSubmit();
       });
@@ -842,7 +962,16 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
     setSaving(true);
 
     try {
-      const passwordHash = await hashPassword(password);
+      // Use cached hash if available, otherwise request password
+      if (!passwordHash) {
+        const cachedHash = getCachedPasswordHash();
+        if (!cachedHash) {
+          setPendingAction(() => handleSubmit);
+          setShowPasswordDialog(true);
+          return;
+        }
+        setPasswordHash(cachedHash);
+      }
       
       // For existing models: upload only new images, then update model, then reorder if needed
       if (model) {
@@ -851,6 +980,11 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
         
         // Identify new images (those with data and IDs starting with "new-" or no real ID)
         const newGalleryItems = formData.gallery?.filter((item) => 
+          item.data && (item.id?.startsWith("new-") || !item.id)
+        ) || [];
+
+        // Identify new digitals (those with data and IDs starting with "new-" or no real ID)
+        const newDigitalsItems = formData.digitals?.filter((item) => 
           item.data && (item.id?.startsWith("new-") || !item.id)
         ) || [];
 
@@ -879,6 +1013,7 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
             const uploadFormData = new FormData();
             uploadFormData.append("file", file);
             uploadFormData.append("modelId", modelId); // Use modelId instead of slug
+            uploadFormData.append("imageType", "image");
             // Find the position in the gallery to determine order
             const galleryIndex = formData.gallery?.findIndex(g => g.id === item.id || g.src === item.src) ?? -1;
             const order = galleryIndex >= 0 ? galleryIndex : formData.gallery?.length ?? 0;
@@ -924,6 +1059,122 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
           if (failures.length > 0) {
             const failureMessages = failures.map(f => `Image ${f.index + 1}: ${f.error}`).join("\n");
             alert(`Failed to upload ${failures.length} new image(s):\n${failureMessages}`);
+            return;
+          }
+        }
+
+        // Upload new digitals from state array (for newly uploaded files)
+        if (digitals.length > 0) {
+          const digitalUploadPromises = digitals.map(async (digital, index) => {
+            const uploadFormData = new FormData();
+            uploadFormData.append("file", digital.file);
+            uploadFormData.append("modelId", modelId);
+            uploadFormData.append("imageType", "digital");
+            uploadFormData.append("type", "gallery");
+            uploadFormData.append("order", String(1000 + index));
+            uploadFormData.append("passwordHash", passwordHash);
+
+            try {
+              const response = await fetch("/api/upload", {
+                method: "PUT",
+                body: uploadFormData,
+              });
+
+              if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.error || error.details || "Unknown error");
+              }
+
+              return { success: true, index };
+            } catch (error) {
+              const errorMessage = error instanceof Error ? error.message : String(error);
+              return { success: false, index, error: errorMessage };
+            }
+          });
+
+          const digitalResults = await Promise.allSettled(digitalUploadPromises);
+          
+          const digitalFailures = digitalResults
+            .map((result, idx) => {
+              if (result.status === "rejected") {
+                return { index: idx, error: result.reason?.message || "Unknown error" };
+              }
+              if (result.status === "fulfilled" && !result.value.success) {
+                return { index: result.value.index, error: result.value.error };
+              }
+              return null;
+            })
+            .filter((failure): failure is { index: number; error: string } => failure !== null);
+
+          if (digitalFailures.length > 0) {
+            const failureMessages = digitalFailures.map(f => `Digital ${f.index + 1}: ${f.error}`).join("\n");
+            alert(`Failed to upload ${digitalFailures.length} new digital(s):\n${failureMessages}`);
+            return;
+          }
+        }
+
+        // Upload new digitals from formData (for existing digitals that were edited)
+        if (newDigitalsItems.length > 0) {
+          const uploadPromises = newDigitalsItems.map(async (item, index) => {
+            let file: File | null = null;
+            
+            const digitalMatch = digitals.find(d => d.preview === item.src || d.data === item.data);
+            if (digitalMatch) {
+              file = digitalMatch.file;
+            } else if (item.data && item.data.startsWith("data:")) {
+              const response = await fetch(item.data);
+              const blob = await response.blob();
+              file = new File([blob], `digital-${Date.now()}.webp`, { type: blob.type });
+            }
+
+            if (!file) {
+              return { success: false, index, error: "File not found" };
+            }
+
+            const uploadFormData = new FormData();
+            uploadFormData.append("file", file);
+            uploadFormData.append("modelId", modelId);
+            uploadFormData.append("imageType", "digital");
+            uploadFormData.append("type", "gallery");
+            const digitalIndex = formData.digitals?.findIndex(d => d.id === item.id || d.src === item.src) ?? index;
+            uploadFormData.append("order", String(1000 + digitalIndex));
+            uploadFormData.append("passwordHash", passwordHash);
+
+            try {
+              const response = await fetch("/api/upload", {
+                method: "PUT",
+                body: uploadFormData,
+              });
+
+              if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.error || error.details || "Unknown error");
+              }
+
+              return { success: true, index, item };
+            } catch (error) {
+              const errorMessage = error instanceof Error ? error.message : String(error);
+              return { success: false, index, item, error: errorMessage };
+            }
+          });
+
+          const results = await Promise.allSettled(uploadPromises);
+          
+          const failures = results
+            .map((result, idx) => {
+              if (result.status === "rejected") {
+                return { index: idx, error: result.reason?.message || "Unknown error" };
+              }
+              if (result.status === "fulfilled" && !result.value.success) {
+                return { index: result.value.index, error: result.value.error };
+              }
+              return null;
+            })
+            .filter((failure): failure is { index: number; error: string } => failure !== null);
+
+          if (failures.length > 0) {
+            const failureMessages = failures.map(f => `Digital ${f.index + 1}: ${f.error}`).join("\n");
+            alert(`Failed to upload ${failures.length} new digital(s):\n${failureMessages}`);
             return;
           }
         }
@@ -975,6 +1226,13 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
                 }
               });
             }
+            if (updatedModel.digitals) {
+              updatedModel.digitals.forEach((img: GalleryItem) => {
+                if (img.id && img.src) {
+                  srcToIdMap.set(img.src, img.id);
+                }
+              });
+            }
             
             // Create mapping of imageId -> order based on gallery order
             // Match gallery items to image IDs by src
@@ -1005,6 +1263,52 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
                 console.error("Failed to reorder images, but model was saved");
               }
             }
+
+            // Reorder digitals if digitals order has changed
+            // Digitals use order numbers starting from 1000
+            // Combine newly uploaded digitals (from state) with existing digitals (from formData)
+            const allDigitals = [
+              ...(formData.digitals || []),
+              // Add newly uploaded digitals from state array (they should be in the fetched model now)
+              ...digitals.map((digital, idx) => ({
+                id: `temp-${idx}`, // Temporary ID, will be resolved from srcToIdMap
+                type: "image" as const,
+                src: digital.preview,
+                alt: `${formData.name || "Digital"} - ${(formData.digitals?.length || 0) + idx}`,
+                data: digital.data,
+              }))
+            ];
+            
+            if (allDigitals.length > 0) {
+              const digitalOrders: Record<string, number> = {};
+              allDigitals.forEach((img, index) => {
+                // Try to find the image ID by matching src
+                const imageId = img.id && !img.id.startsWith("new-") && !img.id.startsWith("temp-")
+                  ? img.id 
+                  : srcToIdMap.get(img.src);
+                
+                if (imageId) {
+                  // Digitals use order numbers starting from 1000
+                  digitalOrders[imageId] = 1000 + index;
+                }
+              });
+              
+              if (Object.keys(digitalOrders).length > 0) {
+                const reorderDigitalsResponse = await fetch("/api/images/reorder", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    modelId: model.id,
+                    imageOrders: digitalOrders,
+                    passwordHash,
+                  }),
+                });
+                
+                if (!reorderDigitalsResponse.ok) {
+                  console.error("Failed to reorder digitals, but model was saved");
+                }
+              }
+            }
           } catch (error) {
             console.error("Error reordering images:", error);
             // Don't fail the whole save if reordering fails
@@ -1016,7 +1320,11 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
         for (const img of images) {
           URL.revokeObjectURL(img.preview);
         }
+        for (const digital of digitals) {
+          URL.revokeObjectURL(digital.preview);
+        }
         setImages([]);
+        setDigitals([]);
         onSave(model.id);
         return;
       }
@@ -1053,6 +1361,7 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
           const formData = new FormData();
           formData.append("file", img.file);
           formData.append("modelId", modelId); // Use modelId instead of slug
+          formData.append("imageType", "image");
           formData.append("type", index === 0 ? "featured" : "gallery");
           formData.append("order", String(index)); // Pass explicit order
           formData.append("passwordHash", passwordHash);
@@ -1097,6 +1406,56 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
         }
       }
 
+      // Upload all digitals in parallel using modelId
+      if (digitals.length > 0) {
+        const uploadPromises = digitals.map(async (digital, index) => {
+          const formData = new FormData();
+          formData.append("file", digital.file);
+          formData.append("modelId", modelId);
+          formData.append("imageType", "digital");
+          formData.append("type", "gallery");
+          formData.append("order", String(1000 + index)); // Use high order numbers for digitals
+          formData.append("passwordHash", passwordHash);
+
+          try {
+            const response = await fetch("/api/upload", {
+              method: "PUT",
+              body: formData,
+            });
+
+            if (!response.ok) {
+              const error = await response.json();
+              throw new Error(error.error || error.details || "Unknown error");
+            }
+
+            return { success: true, index };
+          } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            return { success: false, index, error: errorMessage };
+          }
+        });
+
+        const results = await Promise.allSettled(uploadPromises);
+        
+        const failures = results
+          .map((result, idx) => {
+            if (result.status === "rejected") {
+              return { index: idx, error: result.reason?.message || "Unknown error" };
+            }
+            if (result.status === "fulfilled" && !result.value.success) {
+              return { index: result.value.index, error: result.value.error };
+            }
+            return null;
+          })
+          .filter((failure): failure is { index: number; error: string } => failure !== null);
+
+        if (failures.length > 0) {
+          const failureMessages = failures.map(f => `Digital ${f.index + 1}: ${f.error}`).join("\n");
+          alert(`Failed to upload ${failures.length} digital(s):\n${failureMessages}`);
+          return;
+        }
+      }
+
       // Step 3: Update stats and other fields
       const updateResponse = await fetch(`/api/models/${modelId}`, {
         method: "PUT",
@@ -1120,7 +1479,11 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
       for (const img of images) {
         URL.revokeObjectURL(img.preview);
       }
+      for (const digital of digitals) {
+        URL.revokeObjectURL(digital.preview);
+      }
       setImages([]);
+      setDigitals([]);
       onSave(modelId);
     } catch (error) {
       console.error("Error saving model:", error);
@@ -1154,83 +1517,312 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
             )}
             </div>
 
-            <div className="space-y-2">
-            <Label>Images</Label>
-            <p className="text-sm text-muted-foreground mb-2">
-              Drag and drop or click to upload. New images will be added after the featured image.
-            </p>
-            
-            {/* Drag and drop area */}
-            <div
-              onDrop={handleDrop}
-              onDragOver={(e) => e.preventDefault()}
-              onDragEnter={(e) => e.preventDefault()}
-              role="button"
-              tabIndex={0}
-              className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-gray-400 transition-colors cursor-pointer"
-              onClick={() => document.getElementById("image-upload")?.click()}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === " ") {
-                  e.preventDefault();
-                  document.getElementById("image-upload")?.click();
-                }
-              }}
-            >
-              <Upload className="w-12 h-12 mx-auto mb-4 text-gray-400" />
-              <p className="text-sm text-gray-600 mb-2">
-                Drag and drop images here, or click to select
-              </p>
-              <p className="text-xs text-gray-500">
-                {model ? "New images will be added after the featured image" : "First image will be used as featured image"}
-              </p>
-              <Input
-                id="image-upload"
-                type="file"
-                accept="image/*"
-                multiple
-                onChange={handleFileInput}
-                disabled={uploading}
-                className="hidden"
-              />
-          </div>
-
-            {/* Image previews with drag-and-drop reordering */}
-            {images.length > 0 && (
-              <DndContext
-                sensors={sensors}
-                collisionDetection={closestCenter}
-                onDragEnd={(event) => {
-                  const { active, over } = event;
-                  if (!over || active.id === over.id) return;
-                  
-                  const oldIndex = images.findIndex((_, i) => String(i) === active.id);
-                  const newIndex = images.findIndex((_, i) => String(i) === over.id);
-                  
-                  if (oldIndex !== -1 && newIndex !== -1) {
-                    setImages((prev) => arrayMove(prev, oldIndex, newIndex));
-                  }
-                }}
-              >
-                <SortableContext
-                  items={images.map((_, index) => String(index))}
-                  strategy={verticalListSortingStrategy}
+            {/* Images and Digitals Tabs */}
+            <div className="space-y-4">
+              {/* Tab Buttons */}
+              <div className="flex border-b border-gray-200">
+                <button
+                  type="button"
+                  onClick={() => setActiveTab("images")}
+                  className={`px-4 py-2 font-medium text-sm transition-colors ${
+                    activeTab === "images"
+                      ? "border-b-2 border-blue-600 text-blue-600"
+                      : "text-gray-600 hover:text-gray-900"
+                  }`}
                 >
-                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 mt-4">
-                    {images.map((img, index) => (
-                      <SortableImageItem
-                        key={`${img.file.name}-${index}`}
-                        img={img}
-                        index={index}
-                        onRemove={removeImage}
-                        onMakeFeatured={makeFeatured}
-                        onFullscreen={openFullscreen}
-                        formatFileSize={formatFileSize}
-                      />
-                    ))}
-          </div>
-                </SortableContext>
-              </DndContext>
-            )}
+                  Images
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab("digitals")}
+                  className={`px-4 py-2 font-medium text-sm transition-colors ${
+                    activeTab === "digitals"
+                      ? "border-b-2 border-blue-600 text-blue-600"
+                      : "text-gray-600 hover:text-gray-900"
+                  }`}
+                >
+                  Digitals
+                </button>
+              </div>
+
+              {/* Images Tab Content */}
+              {activeTab === "images" && (
+                <div className="space-y-2">
+                  <Label>Images</Label>
+                  <p className="text-sm text-muted-foreground mb-2">
+                    Drag and drop or click to upload. New images will be added after the featured image.
+                  </p>
+                  
+                  {/* Drag and drop area */}
+                  <div
+                    onDrop={handleDrop}
+                    onDragOver={(e) => e.preventDefault()}
+                    onDragEnter={(e) => e.preventDefault()}
+                    role="button"
+                    tabIndex={0}
+                    className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-gray-400 transition-colors cursor-pointer"
+                    onClick={() => document.getElementById("image-upload")?.click()}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        document.getElementById("image-upload")?.click();
+                      }
+                    }}
+                  >
+                    <Upload className="w-12 h-12 mx-auto mb-4 text-gray-400" />
+                    <p className="text-sm text-gray-600 mb-2">
+                      Drag and drop images here, or click to select
+                    </p>
+                    <p className="text-xs text-gray-500">
+                      {model ? "New images will be added after the featured image" : "First image will be used as featured image"}
+                    </p>
+                    <Input
+                      id="image-upload"
+                      type="file"
+                      accept="image/*"
+                      multiple
+                      onChange={handleFileInput}
+                      disabled={uploading}
+                      className="hidden"
+                    />
+                  </div>
+
+                  {/* Image previews with drag-and-drop reordering */}
+                  {images.length > 0 && (
+                    <DndContext
+                      sensors={sensors}
+                      collisionDetection={closestCenter}
+                      onDragEnd={(event) => {
+                        const { active, over } = event;
+                        if (!over || active.id === over.id) return;
+                        
+                        const oldIndex = images.findIndex((_, i) => String(i) === active.id);
+                        const newIndex = images.findIndex((_, i) => String(i) === over.id);
+                        
+                        if (oldIndex !== -1 && newIndex !== -1) {
+                          setImages((prev) => arrayMove(prev, oldIndex, newIndex));
+                        }
+                      }}
+                    >
+                      <SortableContext
+                        items={images.map((_, index) => String(index))}
+                        strategy={verticalListSortingStrategy}
+                      >
+                        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 mt-4">
+                          {images.map((img, index) => (
+                            <SortableImageItem
+                              key={`${img.file.name}-${index}`}
+                              img={img}
+                              index={index}
+                              onRemove={removeImage}
+                              onMakeFeatured={makeFeatured}
+                              onFullscreen={openFullscreen}
+                              formatFileSize={formatFileSize}
+                            />
+                          ))}
+                        </div>
+                      </SortableContext>
+                    </DndContext>
+                  )}
+
+                  {/* Gallery images (existing + new uploads) - includes featured image as first item */}
+                  {formData.gallery && formData.gallery.length > 0 && (
+                    <div className="space-y-2 mt-4">
+                      <Label>Gallery Images (drag to reorder - first image is featured)</Label>
+                      <DndContext
+                        sensors={sensors}
+                        collisionDetection={closestCenter}
+                        onDragEnd={(event) => {
+                          const { active, over } = event;
+                          if (!over || active.id === over.id) return;
+                          
+                          const oldIndex = formData.gallery.findIndex(
+                            (item) => item.id === active.id || item.src === active.id
+                          );
+                          const newIndex = formData.gallery.findIndex(
+                            (item) => item.id === over.id || item.src === over.id
+                          );
+                          const newGallery = arrayMove(formData.gallery, oldIndex, newIndex);
+                          
+                          // Update featured image to be the first item
+                          const updatedFormData = {
+                            ...formData,
+                            gallery: newGallery,
+                            featuredImage: newGallery[0]?.src || formData.featuredImage,
+                          };
+                          setFormData(updatedFormData);
+                        }}
+                      >
+                        <SortableContext
+                          items={formData.gallery.map((item) => item.id || item.src)}
+                          strategy={verticalListSortingStrategy}
+                        >
+                          <div className="grid grid-cols-4 gap-2 mb-2">
+                            {formData.gallery.map((item, index) => (
+                              <div key={item.id || item.src} className="relative">
+                                {index === 0 && (
+                                  <div className="absolute top-1 left-1 bg-blue-500 text-white text-xs px-2 py-1 rounded z-10">
+                                    Featured
+                                  </div>
+                                )}
+                                <SortableGalleryItem
+                                  item={item}
+                                  passwordHash={passwordHash}
+                                  modelId={model?.id}
+                                  onDelete={(itemId) => {
+                                    const newGallery = formData.gallery.filter(
+                                      (img) => img.id !== itemId
+                                    );
+                                    // Update featured image if we deleted the first one
+                                    const updatedFormData = {
+                                      ...formData,
+                                      gallery: newGallery,
+                                      featuredImage: newGallery[0]?.src || "",
+                                    };
+                                    setFormData(updatedFormData);
+                                  }}
+                                  onFullscreen={(item) => setFullscreenGalleryItem(item)}
+                                />
+                              </div>
+                            ))}
+                          </div>
+                        </SortableContext>
+                      </DndContext>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Digitals Tab Content */}
+              {activeTab === "digitals" && (
+                <div className="space-y-2">
+                  <Label>Digitals</Label>
+                  <p className="text-sm text-muted-foreground mb-2">
+                    Upload digital images for this model.
+                  </p>
+                  
+                  {/* Drag and drop area for digitals */}
+                  <div
+                    onDrop={handleDigitalsDrop}
+                    onDragOver={(e) => e.preventDefault()}
+                    onDragEnter={(e) => e.preventDefault()}
+                    role="button"
+                    tabIndex={0}
+                    className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-gray-400 transition-colors cursor-pointer"
+                    onClick={() => document.getElementById("digitals-upload")?.click()}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        document.getElementById("digitals-upload")?.click();
+                      }
+                    }}
+                  >
+                    <Upload className="w-12 h-12 mx-auto mb-4 text-gray-400" />
+                    <p className="text-sm text-gray-600 mb-2">
+                      Drag and drop digitals here, or click to select
+                    </p>
+                    <Input
+                      id="digitals-upload"
+                      type="file"
+                      accept="image/*"
+                      multiple
+                      onChange={handleDigitalsInput}
+                      disabled={uploading}
+                      className="hidden"
+                    />
+                  </div>
+
+                  {/* Digitals previews */}
+                  {digitals.length > 0 && (
+                    <DndContext
+                      sensors={sensors}
+                      collisionDetection={closestCenter}
+                      onDragEnd={(event) => {
+                        const { active, over } = event;
+                        if (!over || active.id === over.id) return;
+                        
+                        const oldIndex = digitals.findIndex((_, i) => String(i) === active.id);
+                        const newIndex = digitals.findIndex((_, i) => String(i) === over.id);
+                        
+                        if (oldIndex !== -1 && newIndex !== -1) {
+                          setDigitals((prev) => arrayMove(prev, oldIndex, newIndex));
+                        }
+                      }}
+                    >
+                      <SortableContext
+                        items={digitals.map((_, index) => String(index))}
+                        strategy={verticalListSortingStrategy}
+                      >
+                        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 mt-4">
+                          {digitals.map((digital, index) => (
+                            <SortableImageItem
+                              key={`${digital.file.name}-${index}`}
+                              img={digital}
+                              index={index}
+                              onRemove={removeDigital}
+                              onMakeFeatured={() => {}} // No featured for digitals
+                              onFullscreen={(idx) => {
+                                setFullscreenDigital(idx);
+                              }}
+                              formatFileSize={formatFileSize}
+                            />
+                          ))}
+                        </div>
+                      </SortableContext>
+                    </DndContext>
+                  )}
+
+                  {/* Existing digitals from model */}
+                  {formData.digitals && formData.digitals.length > 0 && (
+                    <div className="space-y-2 mt-4">
+                      <Label>Existing Digitals</Label>
+                      <DndContext
+                        sensors={sensors}
+                        collisionDetection={closestCenter}
+                        onDragEnd={(event) => {
+                          const { active, over } = event;
+                          if (!over || active.id === over.id) return;
+                          
+                          const oldIndex = formData.digitals.findIndex(
+                            (item) => item.id === active.id || item.src === active.id
+                          );
+                          const newIndex = formData.digitals.findIndex(
+                            (item) => item.id === over.id || item.src === over.id
+                          );
+                          const newDigitals = arrayMove(formData.digitals, oldIndex, newIndex);
+                          
+                          setFormData({ ...formData, digitals: newDigitals });
+                        }}
+                      >
+                        <SortableContext
+                          items={formData.digitals.map((item) => item.id || item.src)}
+                          strategy={verticalListSortingStrategy}
+                        >
+                          <div className="grid grid-cols-4 gap-2 mb-2">
+                            {formData.digitals.map((item) => (
+                              <div key={item.id || item.src} className="relative">
+                                <SortableGalleryItem
+                                  item={item}
+                                  passwordHash={passwordHash}
+                                  modelId={model?.id}
+                                  onDelete={(itemId) => {
+                                    const newDigitals = formData.digitals.filter(
+                                      (img) => img.id !== itemId
+                                    );
+                                    setFormData({ ...formData, digitals: newDigitals });
+                                  }}
+                                  onFullscreen={(item) => setFullscreenGalleryItem(item)}
+                                />
+                              </div>
+                            ))}
+                          </div>
+                        </SortableContext>
+                      </DndContext>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
 
             {/* Fullscreen image viewer for uploaded images */}
             {fullscreenImage !== null && images[fullscreenImage] && (
@@ -1374,72 +1966,68 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
               </Dialog>
             )}
 
-            {/* Gallery images (existing + new uploads) - includes featured image as first item */}
-            {formData.gallery && formData.gallery.length > 0 && (
-              <div className="space-y-2 mt-4">
-                <Label>Gallery Images (drag to reorder - first image is featured)</Label>
-              <DndContext
-                sensors={sensors}
-                collisionDetection={closestCenter}
-                onDragEnd={(event) => {
-                  const { active, over } = event;
-                  if (!over || active.id === over.id) return;
-                  
-                  const oldIndex = formData.gallery.findIndex(
-                    (item) => item.id === active.id || item.src === active.id
-                  );
-                  const newIndex = formData.gallery.findIndex(
-                    (item) => item.id === over.id || item.src === over.id
-                  );
-                  const newGallery = arrayMove(formData.gallery, oldIndex, newIndex);
-                  
-                  // Update featured image to be the first item
-                  const updatedFormData = {
-                    ...formData,
-                    gallery: newGallery,
-                    featuredImage: newGallery[0]?.src || formData.featuredImage,
-                  };
-                  setFormData(updatedFormData);
-                }}
-              >
-                <SortableContext
-                  items={formData.gallery.map((item) => item.id || item.src)}
-                  strategy={verticalListSortingStrategy}
-                >
-                  <div className="grid grid-cols-4 gap-2 mb-2">
-                      {formData.gallery.map((item, index) => (
-                        <div key={item.id || item.src} className="relative">
-                          {index === 0 && (
-                            <div className="absolute top-1 left-1 bg-blue-500 text-white text-xs px-2 py-1 rounded z-10">
-                              Featured
-                            </div>
-                          )}
-                      <SortableGalleryItem
-                        item={item}
-                        password={password}
-                        modelId={model?.id}
-                        onDelete={(itemId) => {
-                          const newGallery = formData.gallery.filter(
-                            (img) => img.id !== itemId
-                          );
-                              // Update featured image if we deleted the first one
-                              const updatedFormData = {
-                                ...formData,
-                                gallery: newGallery,
-                                featuredImage: newGallery[0]?.src || "",
-                              };
-                              setFormData(updatedFormData);
-                            }}
-                            onFullscreen={(item) => setFullscreenGalleryItem(item)}
-                          />
+            {/* Fullscreen viewers - outside tabs */}
+            {fullscreenDigital !== null && digitals[fullscreenDigital] && (
+              <Dialog open={true} onOpenChange={() => {
+                setFullscreenDigital(null);
+              }}>
+                <DialogContent className="max-w-[95vw] max-h-[95vh] w-auto h-auto p-0 bg-black/95">
+                  <DialogHeader className="sr-only">
+                    <DialogTitle>Fullscreen Digital Viewer</DialogTitle>
+                    <DialogDescription>Viewing digital {fullscreenDigital + 1} of {digitals.length}</DialogDescription>
+                  </DialogHeader>
+                  <div className="relative w-full h-full flex items-center justify-center">
+                    <img
+                      src={digitals[fullscreenDigital].preview}
+                      alt={`Fullscreen digital ${fullscreenDigital + 1}`}
+                      className="max-w-full max-h-[95vh] object-contain"
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="absolute top-4 right-4 text-white hover:bg-white/20 z-20"
+                      onClick={() => {
+                        setFullscreenDigital(null);
+                      }}
+                    >
+                      <X className="w-6 h-6" />
+                    </Button>
+                    {digitals.length > 1 && (
+                      <>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="absolute left-4 top-1/2 -translate-y-1/2 text-white hover:bg-white/20 z-20"
+                          onClick={() => {
+                            const newIndex = (fullscreenDigital - 1 + digitals.length) % digitals.length;
+                            setFullscreenDigital(newIndex);
+                          }}
+                        >
+                          <ChevronLeft className="w-8 h-8" />
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="absolute right-4 top-1/2 -translate-y-1/2 text-white hover:bg-white/20 z-20"
+                          onClick={() => {
+                            const newIndex = (fullscreenDigital + 1) % digitals.length;
+                            setFullscreenDigital(newIndex);
+                          }}
+                        >
+                          <ChevronRight className="w-8 h-8" />
+                        </Button>
+                        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 text-white text-sm bg-black/50 px-3 py-1 rounded z-20">
+                          {fullscreenDigital + 1} / {digitals.length}
                         </div>
-                    ))}
+                      </>
+                    )}
                   </div>
-                </SortableContext>
-              </DndContext>
-              </div>
+                </DialogContent>
+              </Dialog>
             )}
-          </div>
 
             {/* Fullscreen viewer for existing gallery images */}
             {fullscreenGalleryItem && (
@@ -1469,6 +2057,7 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
               </Dialog>
             )}
 
+
           <div className="space-y-2">
             <Label htmlFor="instagram">Instagram</Label>
             <Input
@@ -1479,7 +2068,7 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
             />
           </div>
 
-          {!password && (
+          {!passwordHash && (
             <div className="bg-yellow-50 border border-yellow-200 rounded-md p-3 text-sm text-yellow-800">
               ⚠️ Please enter the admin password in the field at the top of the page.
           </div>

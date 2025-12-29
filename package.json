@@ -11,7 +11,8 @@
     "clear-db": "bun run scripts/clear-db.ts",
     "db:generate": "drizzle-kit generate --config ./drizzle.config.ts",
     "db:migrate": "drizzle-kit migrate --config ./drizzle.config.ts",
-    "drizzle-studio": "npx drizzle-kit studio --config ./drizzle.config.ts"
+    "drizzle-studio": "npx drizzle-kit studio --config ./drizzle.config.ts",
+    "test": "bun test"
   },
   "dependencies": {
     "@dnd-kit/core": "6.1.0",

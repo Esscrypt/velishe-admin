@@ -30,6 +30,7 @@ export const images = pgTable("images", {
   modelId: integer("model_id")
     .notNull()
     .references(() => models.id, { onDelete: "cascade" }),
+  type: text("type").notNull().default("image"), // 'image' or 'digital'
   data: text("data").notNull(), // Base64 encoded image data
   order: integer("order").notNull(),
   createdAt: timestamp("created_at").notNull().defaultNow(),

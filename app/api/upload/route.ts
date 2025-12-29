@@ -29,6 +29,7 @@ export async function PUT(request: NextRequest) {
     const file = formData.get("file") as File;
     const slug = formData.get("slug") as string | null;
     const modelId = formData.get("modelId") as string | null;
+    const imageType = formData.get("imageType") as string | null; // 'image' or 'digital'
     const type = formData.get("type") as string; // 'featured' or 'gallery'
     const orderParam = formData.get("order") as string | null; // Explicit order from frontend
 
@@ -168,7 +169,7 @@ export async function PUT(request: NextRequest) {
           await db.insert(schema.images).values({
             id: imageId,
             modelId: modelIdNum,
-            type: "image",
+            type: imageType || "image",
             src: `db://${imageId}`,
             alt: `${modelSlug} - ${originalName}`,
             data: dataUri,
@@ -208,7 +209,7 @@ export async function PUT(request: NextRequest) {
         await db.insert(schema.images).values({
           id: imageId,
           modelId: modelIdNum,
-          type: "image",
+          type: imageType || "image",
           src: `db://${imageId}`, // Placeholder since we're using base64 data
           alt: `${modelSlug} - ${originalName}`,
           data: dataUri,
