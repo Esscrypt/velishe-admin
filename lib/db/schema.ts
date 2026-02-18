@@ -1,4 +1,4 @@
-import { pgTable, text, integer, timestamp, serial, unique } from "drizzle-orm/pg-core";
+import { pgTable, text, integer, timestamp, serial, unique, boolean } from "drizzle-orm/pg-core";
 
 export interface ModelStats {
   height: string;
@@ -38,8 +38,19 @@ export const images = pgTable("images", {
   modelOrderUnique: unique().on(table.modelId, table.order),
 }));
 
+export const academyWishlistEntries = pgTable("academy_wishlist_entries", {
+  id: serial("id").primaryKey(),
+  email: text("email").notNull(),
+  phoneNumber: text("phone_number").notNull(),
+  emailSent: boolean("email_sent").notNull().default(false),
+  confirmed: boolean("confirmed").notNull().default(false),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
 export type ModelRow = typeof models.$inferSelect;
 export type ModelInsert = typeof models.$inferInsert;
 export type ImageRow = typeof images.$inferSelect;
 export type ImageInsert = typeof images.$inferInsert;
+export type AcademyWishlistEntryRow = typeof academyWishlistEntries.$inferSelect;
+export type AcademyWishlistEntryInsert = typeof academyWishlistEntries.$inferInsert;
 

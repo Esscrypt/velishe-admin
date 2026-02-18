@@ -41,5 +41,5 @@ export function getDb() {
 
 export { schema };
 export * from "drizzle-orm";
-export type { ModelInsert, ModelRow, ImageInsert, ImageRow } from "./schema";
+export type { ModelInsert, ModelRow, ImageInsert, ImageRow, AcademyWishlistEntryRow, AcademyWishlistEntryInsert } from "./schema";
 

@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Plus, Edit, Trash2, GripVertical } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
+import { Plus, Edit, Trash2, GripVertical, List } from "lucide-react";
 import ModelForm from "@/components/ModelForm";
 import PasswordDialog, { getCachedPasswordHash, clearCachedPasswordHash } from "@/components/PasswordDialog";
 import { Button } from "@/components/ui/button";
@@ -116,7 +117,7 @@ export default function AdminPage() {
   const [showForm, setShowForm] = useState(false);
   const [editingModel, setEditingModel] = useState<Model | null>(null);
   const [showPasswordDialog, setShowPasswordDialog] = useState(false);
-  const [passwordDialogAction, setPasswordDialogAction] = useState<((passwordHash: string) => void) | null>(null);
+  const passwordDialogActionRef = useRef<((passwordHash: string) => void) | null>(null);
   const [passwordDialogTitle, setPasswordDialogTitle] = useState("Admin Authentication");
   const [passwordDialogDescription, setPasswordDialogDescription] = useState("Please enter your admin password to continue.");
   const [hasPendingReorder, setHasPendingReorder] = useState(false);
@@ -261,7 +262,7 @@ export default function AdminPage() {
     // Show password dialog
     setPasswordDialogTitle("Delete Model");
     setPasswordDialogDescription("Please enter your admin password to delete this model.");
-    setPasswordDialogAction(() => (hash: string) => performDelete(id, hash));
+    passwordDialogActionRef.current = (hash: string) => performDelete(id, hash);
     setShowPasswordDialog(true);
   };
 
@@ -282,10 +283,10 @@ export default function AdminPage() {
       } else {
         setPasswordDialogTitle("Edit Model");
         setPasswordDialogDescription("Please enter your admin password to edit this model.");
-        setPasswordDialogAction(() => () => {
+        passwordDialogActionRef.current = () => {
           setEditingModel(fullModel);
           setShowForm(true);
-        });
+        };
         setShowPasswordDialog(true);
       }
     } finally {
@@ -301,10 +302,10 @@ export default function AdminPage() {
     } else {
       setPasswordDialogTitle("Add Model");
       setPasswordDialogDescription("Please enter your admin password to add a new model.");
-      setPasswordDialogAction(() => () => {
+      passwordDialogActionRef.current = () => {
         setEditingModel(null);
         setShowForm(true);
-      });
+      };
       setShowPasswordDialog(true);
     }
   };
@@ -389,7 +390,7 @@ export default function AdminPage() {
     // Show password dialog
     setPasswordDialogTitle("Reorder Models");
     setPasswordDialogDescription("Please enter your admin password to save the new order.");
-    setPasswordDialogAction(() => (hash: string) => performReorder(orderedIds, hash));
+    passwordDialogActionRef.current = (hash: string) => performReorder(orderedIds, hash);
     setShowPasswordDialog(true);
   };
 
@@ -401,9 +402,10 @@ export default function AdminPage() {
   // Loading state is now shown inline with the progress bar
 
   const handlePasswordSuccess = (passwordHash: string) => {
-    if (passwordDialogAction) {
-      passwordDialogAction(passwordHash);
-      setPasswordDialogAction(null);
+    const action = passwordDialogActionRef.current;
+    passwordDialogActionRef.current = null;
+    if (typeof action === "function") {
+      action(passwordHash);
     }
   };
 
@@ -413,6 +415,12 @@ export default function AdminPage() {
         <div className="flex justify-between items-center mb-8">
           <h1 className="text-3xl font-bold">Models Admin</h1>
           <div className="flex items-center gap-4">
+            <Link href="/academy-wishlist">
+              <Button variant="outline">
+                <List className="w-5 h-5" />
+                Academy Wishlist
+              </Button>
+            </Link>
             {hasPendingReorder && (
               <>
                 <Button
@@ -525,7 +533,7 @@ export default function AdminPage() {
         open={showPasswordDialog}
         onClose={() => {
           setShowPasswordDialog(false);
-          setPasswordDialogAction(null);
+          passwordDialogActionRef.current = null;
         }}
         onSuccess={handlePasswordSuccess}
         title={passwordDialogTitle}
