@@ -11,7 +11,7 @@ async function main() {
 
   try {
     const hash = await hashPasswordForStorage(password);
-    console.log("\n✅ Password hash generated:");
+    console.log("\n Password hash generated:");
     console.log(hash);
     console.log("\n📝 Add this to your .env.local file (IMPORTANT: Use quotes!):");
     console.log(`ADMIN_PASSWORD_HASH="${hash}"\n`);

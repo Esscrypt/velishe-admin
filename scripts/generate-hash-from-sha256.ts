@@ -20,7 +20,7 @@ async function main() {
     // This matches what hashPasswordForStorage does: bcrypt(SHA-256(password))
     const saltRounds = 10;
     const bcryptHash = await bcrypt.hash(sha256Hash, saltRounds);
-    console.log("\n✅ Bcrypt hash generated from SHA-256 hash:");
+    console.log("\n Bcrypt hash generated from SHA-256 hash:");
     console.log(bcryptHash);
     console.log("\n📝 Add this to your .env.local file (IMPORTANT: Use quotes!):");
     console.log(`ADMIN_PASSWORD_HASH="${bcryptHash}"\n`);

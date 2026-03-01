@@ -4,10 +4,10 @@ Admin panel for managing models in the modeling portfolio database.
 
 ## Features
 
-- ✅ CRUD operations for models
-- ✅ Image upload with automatic resizing (Sharp)
-- ✅ Drag-and-drop reordering of models
-- ✅ Real-time updates
+-  CRUD operations for models
+-  Image upload with automatic resizing (Sharp)
+-  Drag-and-drop reordering of models
+-  Real-time updates
 
 ## Setup
 

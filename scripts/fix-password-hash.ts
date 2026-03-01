@@ -11,7 +11,7 @@ async function main() {
   console.log(`\n📝 Generating hash for password: "${password}"`);
   const hash = await hashPasswordForStorage(password);
   
-  console.log(`\n✅ Generated hash:`);
+  console.log(`\n Generated hash:`);
   console.log(hash);
   
   // Read .env.local
@@ -29,17 +29,17 @@ async function main() {
   if (envContent.includes("ADMIN_PASSWORD_HASH=")) {
     // Replace existing line
     envContent = envContent.replace(/ADMIN_PASSWORD_HASH=.*/g, hashLine);
-    console.log("\n✅ Updated existing ADMIN_PASSWORD_HASH in .env.local");
+    console.log("\n Updated existing ADMIN_PASSWORD_HASH in .env.local");
   } else {
     // Add new line
     envContent += (envContent.endsWith("\n") ? "" : "\n") + hashLine + "\n";
-    console.log("\n✅ Added ADMIN_PASSWORD_HASH to .env.local");
+    console.log("\n Added ADMIN_PASSWORD_HASH to .env.local");
   }
   
   // Write back to file
   writeFileSync(".env.local", envContent);
   
-  console.log("\n✅ .env.local has been updated!");
+  console.log("\n .env.local has been updated!");
   console.log("\n⚠️  IMPORTANT: Restart your dev server for changes to take effect!");
   console.log("\n" + "=".repeat(60));
 }
