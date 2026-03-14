@@ -31,7 +31,7 @@ export async function PUT(request: NextRequest) {
     const modelId = formData.get("modelId") as string | null;
     const imageType = formData.get("imageType") as string | null; // 'image' or 'digital'
     const type = formData.get("type") as string; // 'featured' or 'gallery'
-    const orderParam = formData.get("order") as string | null; // Explicit order from frontend
+    // order param is sent by frontend but not used here — reorder endpoint handles final ordering
 
     if (!file) {
       return NextResponse.json(
@@ -83,6 +83,8 @@ export async function PUT(request: NextRequest) {
       );
     }
 
+    let imageId: string = "";
+
     try {
       let modelIdNum: number;
       
@@ -131,6 +133,16 @@ export async function PUT(request: NextRequest) {
         );
       }
       
+      const originalName = file.name.replace(/\.[^/.]+$/, "");
+
+      // Get model slug for alt text
+      const model = await db
+        .select({ slug: schema.models.slug })
+        .from(schema.models)
+        .where(eq(schema.models.id, modelIdNum))
+        .limit(1);
+
+      const modelSlug = model[0]?.slug || "model";
       if (type === "featured") {
         // Featured image is stored in images table with order 0
         // First, check if there's already a featured image (order 0)
@@ -142,19 +154,9 @@ export async function PUT(request: NextRequest) {
             eq(schema.images.order, 0)
           ))
           .limit(1);
-        
-        const originalName = file.name.replace(/\.[^/.]+$/, "");
-        const imageId = existingFeatured.length > 0 ? existingFeatured[0].id : randomUUID();
-        
-        // Get model slug for alt text
-        const model = await db
-          .select({ slug: schema.models.slug })
-          .from(schema.models)
-          .where(eq(schema.models.id, modelIdNum))
-          .limit(1);
-        
-        const modelSlug = model[0]?.slug || "model";
-        
+
+        imageId = existingFeatured.length > 0 ? existingFeatured[0].id : randomUUID();
+
         if (existingFeatured.length > 0) {
           // Update existing featured image
           await db
@@ -178,39 +180,18 @@ export async function PUT(request: NextRequest) {
         }
       } else {
         // Gallery image - use temporary high order to avoid conflicts, will be set correctly by reorder
-        const originalName = file.name.replace(/\.[^/.]+$/, "");
-        const imageId = randomUUID();
-        
-        // Get model slug for alt text
-        const model = await db
-          .select({ slug: schema.models.slug })
-          .from(schema.models)
-          .where(eq(schema.models.id, modelIdNum))
-          .limit(1);
-        
-        const modelSlug = model[0]?.slug || "model";
-        
-        // Get current max order to assign a temporary high order that won't conflict
-        // The reorder endpoint will set the final order correctly
-        const existingImages = await db
-          .select({ order: schema.images.order })
-          .from(schema.images)
-          .where(eq(schema.images.modelId, modelIdNum));
-        
-        const maxOrder = existingImages.length > 0
-          ? Math.max(...existingImages.map((img) => img.order ?? 0))
-          : -1;
-        
+        imageId = randomUUID();
+
         // Use a temporary high order (10000 + timestamp component) to avoid conflicts
         // This ensures parallel uploads don't conflict, and reorder will set final orders
         const tempOrder = 10000 + Date.now() % 10000 + Math.floor(Math.random() * 1000);
-        
+
         // Insert new image into images table with base64 data
         await db.insert(schema.images).values({
           id: imageId,
           modelId: modelIdNum,
           type: imageType || "image",
-          src: `db://${imageId}`, // Placeholder since we're using base64 data
+          src: `db://${imageId}`,
           alt: `${modelSlug} - ${originalName}`,
           data: dataUri,
           order: tempOrder, // Temporary high order, will be corrected by reorder
@@ -230,9 +211,10 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    return NextResponse.json({ 
-      success: true, 
+    return NextResponse.json({
+      success: true,
       path: dataUri, // Return data URI
+      imageId: imageId, // Return image ID for reorder mapping
     });
   } catch (error) {
     console.error("Error uploading image:", error);

@@ -1356,14 +1356,14 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
       const modelId = newModel.id; // Use ID instead of slug
 
       // Step 2: Upload all images in parallel using modelId
+      const uploadedImageIds: { index: number; imageId: string }[] = [];
       if (images.length > 0) {
         const uploadPromises = images.map(async (img, index) => {
           const formData = new FormData();
           formData.append("file", img.file);
-          formData.append("modelId", modelId); // Use modelId instead of slug
+          formData.append("modelId", modelId);
           formData.append("imageType", "image");
           formData.append("type", index === 0 ? "featured" : "gallery");
-          formData.append("order", String(index)); // Pass explicit order
           formData.append("passwordHash", passwordHash);
 
           try {
@@ -1377,15 +1377,16 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
               throw new Error(error.error || error.details || "Unknown error");
             }
 
-            return { success: true, index, type: index === 0 ? "featured" : "gallery" };
+            const data = await response.json();
+            return { success: true, index, imageId: data.imageId as string };
           } catch (error) {
             const errorMessage = error instanceof Error ? error.message : String(error);
-            return { success: false, index, type: index === 0 ? "featured" : "gallery", error: errorMessage };
+            return { success: false, index, imageId: "", error: errorMessage };
           }
         });
 
         const results = await Promise.allSettled(uploadPromises);
-        
+
         // Check for failures
         const failures = results
           .map((result, idx) => {
@@ -1394,6 +1395,10 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
             }
             if (result.status === "fulfilled" && !result.value.success) {
               return { index: result.value.index, error: result.value.error };
+            }
+            // Collect successful upload IDs for reordering
+            if (result.status === "fulfilled" && result.value.success) {
+              uploadedImageIds.push({ index: result.value.index, imageId: result.value.imageId });
             }
             return null;
           })
@@ -1473,6 +1478,33 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
         const error = await updateResponse.json();
         alert(`Failed to update model stats: ${error.error || "Unknown error"}`);
         return;
+      }
+
+      // Step 4: Reorder images to match user's drag-and-drop arrangement
+      // Uploads get temp orders, so we set the correct order using the returned image IDs
+      if (uploadedImageIds.length > 1) {
+        try {
+          const imageOrders: Record<string, number> = {};
+          for (const { index, imageId } of uploadedImageIds) {
+            if (imageId) {
+              imageOrders[imageId] = index;
+            }
+          }
+
+          if (Object.keys(imageOrders).length > 0) {
+            await fetch("/api/images/reorder", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                modelId,
+                imageOrders,
+                passwordHash,
+              }),
+            });
+          }
+        } catch (error) {
+          console.error("Error reordering images for new model:", error);
+        }
       }
 
       // Clean up preview URLs
