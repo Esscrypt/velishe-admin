@@ -65,6 +65,8 @@ export async function GET(request: NextRequest) {
         eyeColor: schema.models.eyeColor,
         instagram: schema.models.instagram,
         displayOrder: schema.models.displayOrder,
+        booked: schema.models.booked,
+        targetLocation: schema.models.targetLocation,
       })
       .from(schema.models)
       .orderBy(asc(schema.models.displayOrder))
@@ -94,6 +96,8 @@ export async function GET(request: NextRequest) {
         eyeColor: schema.models.eyeColor,
         instagram: schema.models.instagram,
         displayOrder: schema.models.displayOrder,
+        booked: schema.models.booked,
+        targetLocation: schema.models.targetLocation,
         imageId: schema.images.id,
         imageData: schema.images.data,
         imageOrder: schema.images.order,
@@ -139,6 +143,8 @@ export async function GET(request: NextRequest) {
             eyeColor: row.eyeColor || "",
           },
           instagram: row.instagram || undefined,
+          booked: row.booked ?? false,
+          targetLocation: row.targetLocation || undefined,
           featuredImage: "", // Will be set from images
           featuredImageId: "",
           displayOrder: row.displayOrder ?? 0,
@@ -244,6 +250,8 @@ export async function POST(request: NextRequest) {
         eyeColor: modelData.stats?.eyeColor || null,
         instagram: modelData.instagram || null,
         displayOrder: modelData.displayOrder ?? (maxOrder + 1),
+        booked: modelData.booked ?? false,
+        targetLocation: modelData.targetLocation || null,
       } as ModelInsert)
       .returning();
 

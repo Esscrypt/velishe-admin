@@ -23,6 +23,8 @@ export const models = pgTable("models", {
   eyeColor: text("eye_color"),
   instagram: text("instagram"),
   displayOrder: integer("display_order").default(0),
+  booked: boolean("booked").default(false),
+  targetLocation: text("target_location"),
 });
 
 export const images = pgTable("images", {

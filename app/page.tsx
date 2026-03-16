@@ -44,6 +44,8 @@ interface Model {
     eyeColor: string;
   };
   instagram?: string;
+  booked?: boolean;
+  targetLocation?: string;
   featuredImage?: string;
   gallery?: GalleryItem[];
 }
@@ -85,7 +87,14 @@ function SortableItem({ model, onEdit, onDelete }: Readonly<{ model: Model; onEd
         />
       ) : null}
       <div className="flex-1">
-        <h3 className="font-semibold text-lg">{model.name}</h3>
+        <div className="flex items-center gap-2">
+          <h3 className="font-semibold text-lg">{model.name}</h3>
+          {model.booked && (
+            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
+              Booked{model.targetLocation ? ` \u2014 ${model.targetLocation}` : ""}
+            </span>
+          )}
+        </div>
         <p className="text-sm text-gray-600">Slug: {model.slug}</p>
         <p className="text-sm text-gray-600">ID: {model.id}</p>
       </div>

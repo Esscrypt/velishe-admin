@@ -53,6 +53,8 @@ interface Model {
     eyeColor: string;
   };
   instagram?: string;
+  booked?: boolean;
+  targetLocation?: string;
   featuredImage?: string;
   gallery?: GalleryItem[];
   digitals?: GalleryItem[];
@@ -292,6 +294,8 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
       eyeColor: model?.stats?.eyeColor || "",
     },
     instagram: model?.instagram || "",
+    booked: model?.booked || false,
+    targetLocation: model?.targetLocation || "",
     featuredImage: model?.featuredImage || "",
     gallery: model?.gallery || [],
     digitals: model?.digitals || [],
@@ -375,6 +379,8 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
           eyeColor: model.stats?.eyeColor || "",
         },
         instagram: model.instagram || "",
+        booked: model.booked || false,
+        targetLocation: model.targetLocation || "",
         featuredImage: model.featuredImage || "",
         gallery: combinedGallery,
         digitals: model.digitals || [],
@@ -395,6 +401,8 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
           eyeColor: "",
         },
         instagram: "",
+        booked: false,
+        targetLocation: "",
         featuredImage: "",
         gallery: [],
         digitals: [],
@@ -1191,6 +1199,8 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
             name: dataToSend.name,
             stats: dataToSend.stats,
             instagram: dataToSend.instagram || null,
+            booked: dataToSend.booked || false,
+            targetLocation: dataToSend.targetLocation || null,
             passwordHash,
             // featuredImage and gallery are NOT sent - they're handled via /api/upload
           }),
@@ -1470,6 +1480,8 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
           name: formData.name,
           stats: formData.stats,
           instagram: formData.instagram || null,
+          booked: formData.booked || false,
+          targetLocation: formData.targetLocation || null,
           passwordHash,
         }),
       });
@@ -2098,6 +2110,30 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
               value={formData.instagram}
               onChange={(e) => handleInputChange("instagram", e.target.value)}
             />
+          </div>
+
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                id="booked"
+                checked={formData.booked}
+                onChange={(e) => setFormData({ ...formData, booked: e.target.checked })}
+                className="h-4 w-4 rounded border-gray-300"
+              />
+              <Label htmlFor="booked">Booked</Label>
+            </div>
+            {formData.booked && (
+              <div className="flex-1">
+                <Input
+                  id="targetLocation"
+                  type="text"
+                  placeholder="Target location (e.g. Milan, Paris)"
+                  value={formData.targetLocation}
+                  onChange={(e) => handleInputChange("targetLocation", e.target.value)}
+                />
+              </div>
+            )}
           </div>
 
           {!passwordHash && (
