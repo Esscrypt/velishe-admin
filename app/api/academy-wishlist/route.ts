@@ -14,8 +14,15 @@ function validatePhoneNumber(phoneNumber: string): boolean {
   return phoneRegex.test(phoneNumber) && numericLength >= 7 && numericLength <= 20;
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
+    const { searchParams } = new URL(request.url);
+    const passwordHash = searchParams.get("passwordHash");
+    const authResult = await verifyAuth({ passwordHash: passwordHash ?? undefined });
+    if (!authResult.authorized) {
+      return authResult.response!;
+    }
+
     const db = getDb();
     if (!db) {
       return NextResponse.json(

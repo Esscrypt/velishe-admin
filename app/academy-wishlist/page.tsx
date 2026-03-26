@@ -19,7 +19,8 @@ interface AcademyWishlistEntry {
 
 export default function AcademyWishlistPage() {
   const [entries, setEntries] = useState<AcademyWishlistEntry[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [showAddForm, setShowAddForm] = useState(false);
   const [showPasswordDialog, setShowPasswordDialog] = useState(false);
   const passwordDialogActionRef = useRef<((passwordHash: string) => void) | null>(null);
@@ -32,13 +33,23 @@ export default function AcademyWishlistPage() {
   const [newConfirmed, setNewConfirmed] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
-  const fetchEntries = async () => {
+  const fetchEntries = async (hash: string) => {
     setLoading(true);
     try {
-      const response = await fetch("/api/academy-wishlist");
+      const response = await fetch(`/api/academy-wishlist?passwordHash=${encodeURIComponent(hash)}`);
       if (response.ok) {
         const data = await response.json();
         setEntries(Array.isArray(data) ? data : []);
+      } else if (response.status === 401) {
+        clearCachedPasswordHash();
+        setIsAuthenticated(false);
+        setPasswordDialogTitle("Academy Wishlist");
+        setPasswordDialogDescription("Enter your admin password to view the waitlist.");
+        passwordDialogActionRef.current = (h: string) => {
+          setIsAuthenticated(true);
+          fetchEntries(h);
+        };
+        setShowPasswordDialog(true);
       } else {
         setEntries([]);
       }
@@ -51,7 +62,19 @@ export default function AcademyWishlistPage() {
   };
 
   useEffect(() => {
-    fetchEntries();
+    const cached = getCachedPasswordHash();
+    if (cached) {
+      setIsAuthenticated(true);
+      fetchEntries(cached);
+    } else {
+      setPasswordDialogTitle("Academy Wishlist");
+      setPasswordDialogDescription("Enter your admin password to view the waitlist.");
+      passwordDialogActionRef.current = (hash: string) => {
+        setIsAuthenticated(true);
+        fetchEntries(hash);
+      };
+      setShowPasswordDialog(true);
+    }
   }, []);
 
   const performToggle = async (entry: AcademyWishlistEntry, field: "emailSent" | "confirmed", value: boolean, passwordHash: string) => {
@@ -207,13 +230,15 @@ export default function AcademyWishlistPage() {
             </Link>
             <h1 className="text-2xl sm:text-3xl font-bold truncate">Academy Wishlist</h1>
           </div>
-          <Button
-            onClick={() => setShowAddForm((v) => !v)}
-            className="w-full sm:w-auto shrink-0"
-          >
-            <Plus className="w-5 h-5" />
-            Add entry
-          </Button>
+          {isAuthenticated && (
+            <Button
+              onClick={() => setShowAddForm((v) => !v)}
+              className="w-full sm:w-auto shrink-0"
+            >
+              <Plus className="w-5 h-5" />
+              Add entry
+            </Button>
+          )}
         </div>
 
         {showAddForm && (
@@ -293,7 +318,7 @@ export default function AcademyWishlistPage() {
           </div>
         )}
 
-        {!loading && (
+        {!loading && isAuthenticated && (
           <div className="bg-white rounded-lg shadow overflow-hidden">
             {entries.length === 0 ? (
               <div className="text-center py-12 px-4 text-gray-500">
