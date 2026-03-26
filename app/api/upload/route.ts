@@ -3,6 +3,7 @@ import sharp from "sharp";
 import { randomUUID } from "node:crypto";
 import { verifyPasswordHash } from "@/lib/auth";
 import { getDb, schema, eq, and } from "@/lib/db";
+import { triggerRevalidation } from "@/lib/revalidate";
 import { config } from "dotenv";
 
 config();
@@ -84,6 +85,7 @@ export async function PUT(request: NextRequest) {
     }
 
     let imageId: string = "";
+    let modelSlug: string | undefined;
 
     try {
       let modelIdNum: number;
@@ -142,7 +144,8 @@ export async function PUT(request: NextRequest) {
         .where(eq(schema.models.id, modelIdNum))
         .limit(1);
 
-      const modelSlug = model[0]?.slug || "model";
+      modelSlug = model[0]?.slug || undefined;
+      const altSlug = modelSlug ?? "model";
       if (type === "featured") {
         // Featured image is stored in images table with order 0
         // First, check if there's already a featured image (order 0)
@@ -163,7 +166,7 @@ export async function PUT(request: NextRequest) {
             .update(schema.images)
             .set({
               data: dataUri,
-              alt: `${modelSlug} - ${originalName}`,
+              alt: `${altSlug} - ${originalName}`,
             } as any)
             .where(eq(schema.images.id, imageId));
         } else {
@@ -173,7 +176,7 @@ export async function PUT(request: NextRequest) {
             modelId: modelIdNum,
             type: imageType || "image",
             src: `db://${imageId}`,
-            alt: `${modelSlug} - ${originalName}`,
+            alt: `${altSlug} - ${originalName}`,
             data: dataUri,
             order: 0, // Featured images have order 0
           } as any);
@@ -192,7 +195,7 @@ export async function PUT(request: NextRequest) {
           modelId: modelIdNum,
           type: imageType || "image",
           src: `db://${imageId}`,
-          alt: `${modelSlug} - ${originalName}`,
+          alt: `${altSlug} - ${originalName}`,
           data: dataUri,
           order: tempOrder, // Temporary high order, will be corrected by reorder
         } as any);
@@ -211,6 +214,7 @@ export async function PUT(request: NextRequest) {
       );
     }
 
+    await triggerRevalidation(modelSlug);
     return NextResponse.json({
       success: true,
       path: dataUri, // Return data URI

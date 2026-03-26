@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDb, schema, eq } from "@/lib/db";
 import { verifyAuth } from "@/lib/auth-middleware";
+import { triggerRevalidation } from "@/lib/revalidate";
 import { config } from "dotenv";
 
 config();
@@ -69,6 +70,13 @@ export async function POST(request: NextRequest) {
         )
       );
     });
+
+    const modelRow = await db
+      .select({ slug: schema.models.slug })
+      .from(schema.models)
+      .where(eq(schema.models.id, modelIdNum))
+      .limit(1);
+    await triggerRevalidation(modelRow[0]?.slug ?? undefined);
 
     return NextResponse.json({ success: true });
   } catch (error) {

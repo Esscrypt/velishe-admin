@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDb, schema, eq, asc } from "@/lib/db";
 import { verifyAuth } from "@/lib/auth-middleware";
+import { triggerRevalidation } from "@/lib/revalidate";
 import { config } from "dotenv";
 
 config();
@@ -180,6 +181,7 @@ export async function PUT(
       return NextResponse.json({ error: "Model not found" }, { status: 404 });
     }
 
+    await triggerRevalidation(updated[0].slug ?? undefined);
     return NextResponse.json(updated[0]);
   } catch (error) {
     console.error("Error updating model:", error);
@@ -221,6 +223,7 @@ export async function DELETE(
       return NextResponse.json({ error: "Model not found" }, { status: 404 });
     }
 
+    await triggerRevalidation(deleted[0].slug ?? undefined);
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error("Error deleting model:", error);

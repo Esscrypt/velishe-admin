@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDb, schema, eq } from "@/lib/db";
 import { verifyAuth } from "@/lib/auth-middleware";
+import { triggerRevalidation } from "@/lib/revalidate";
 import { config } from "dotenv";
 
 config();
@@ -37,6 +38,8 @@ export async function POST(request: NextRequest) {
         }
       }
     });
+
+    await triggerRevalidation(); // no slug — only homepage order changed
 
     return NextResponse.json({ success: true });
   } catch (error) {
