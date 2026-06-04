@@ -67,6 +67,7 @@ export async function GET(request: NextRequest) {
         displayOrder: schema.models.displayOrder,
         booked: schema.models.booked,
         targetLocation: schema.models.targetLocation,
+        published: schema.models.published,
       })
       .from(schema.models)
       .orderBy(asc(schema.models.displayOrder))
@@ -98,6 +99,7 @@ export async function GET(request: NextRequest) {
         displayOrder: schema.models.displayOrder,
         booked: schema.models.booked,
         targetLocation: schema.models.targetLocation,
+        published: schema.models.published,
         imageId: schema.images.id,
         imageData: schema.images.data,
         imageOrder: schema.images.order,
@@ -145,6 +147,7 @@ export async function GET(request: NextRequest) {
           instagram: row.instagram || undefined,
           booked: row.booked ?? false,
           targetLocation: row.targetLocation || undefined,
+          published: row.published ?? false,
           featuredImage: "", // Will be set from images
           featuredImageId: "",
           displayOrder: row.displayOrder ?? 0,
@@ -282,6 +285,12 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(responseModel, { status: 201 });
   } catch (error) {
     console.error("Error creating model:", error);
+    if ((error as { code?: string })?.code === "23505") {
+      return NextResponse.json(
+        { error: "A model with this slug already exists. Choose a different slug." },
+        { status: 409 }
+      );
+    }
     return NextResponse.json(
       { error: "Failed to create model" },
       { status: 500 }

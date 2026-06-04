@@ -31,6 +31,28 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 
+async function uploadWithRetry(body: FormData, attempts = 3): Promise<Response> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    try {
+      const response = await fetch("/api/upload", { method: "PUT", body });
+      if (response.ok) return response;
+      const retryable =
+        response.status >= 500 || response.status === 408 || response.status === 429;
+      if (!retryable) return response;
+      lastError = new Error(`Upload failed with status ${response.status}`);
+    } catch (error) {
+      lastError = error;
+    }
+    if (attempt < attempts - 1) {
+      await new Promise((resolve) => setTimeout(resolve, 500 * 2 ** attempt));
+    }
+  }
+  throw lastError instanceof Error
+    ? lastError
+    : new Error("Upload failed after retries");
+}
+
 interface GalleryItem {
   id?: string;
   type: "image" | "video";
@@ -1032,10 +1054,7 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
             uploadFormData.append("passwordHash", passwordHash);
 
             try {
-              const response = await fetch("/api/upload", {
-                method: "PUT",
-                body: uploadFormData,
-              });
+              const response = await uploadWithRetry(uploadFormData);
 
               if (!response.ok) {
                 const error = await response.json();
@@ -1083,10 +1102,7 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
             uploadFormData.append("passwordHash", passwordHash);
 
             try {
-              const response = await fetch("/api/upload", {
-                method: "PUT",
-                body: uploadFormData,
-              });
+              const response = await uploadWithRetry(uploadFormData);
 
               if (!response.ok) {
                 const error = await response.json();
@@ -1149,10 +1165,7 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
             uploadFormData.append("passwordHash", passwordHash);
 
             try {
-              const response = await fetch("/api/upload", {
-                method: "PUT",
-                body: uploadFormData,
-              });
+              const response = await uploadWithRetry(uploadFormData);
 
               if (!response.ok) {
                 const error = await response.json();
@@ -1191,6 +1204,9 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
         // Images are handled separately via /api/upload
         const { id, featuredImage, gallery, ...dataToSend } = formData;
 
+        // A model is only visible publicly once it actually has at least one image.
+        const hasImages = Boolean(featuredImage) || (gallery?.length ?? 0) > 0 || images.length > 0;
+
         const response = await fetch(url, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
@@ -1201,6 +1217,7 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
             instagram: dataToSend.instagram || null,
             booked: dataToSend.booked || false,
             targetLocation: dataToSend.targetLocation || null,
+            published: hasImages,
             passwordHash,
             // featuredImage and gallery are NOT sent - they're handled via /api/upload
           }),
@@ -1365,6 +1382,20 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
       const newModel = await createResponse.json();
       const modelId = newModel.id; // Use ID instead of slug
 
+      // The model row is created before its images; if uploads fail we delete it
+      // so the catalog never contains a published, imageless model.
+      const deleteOrphanModel = async () => {
+        try {
+          await fetch(`/api/models/${modelId}`, {
+            method: "DELETE",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ passwordHash }),
+          });
+        } catch (cleanupError) {
+          console.error("Failed to clean up orphaned model:", cleanupError);
+        }
+      };
+
       // Step 2: Upload all images in parallel using modelId
       const uploadedImageIds: { index: number; imageId: string }[] = [];
       if (images.length > 0) {
@@ -1377,10 +1408,7 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
           formData.append("passwordHash", passwordHash);
 
           try {
-            const response = await fetch("/api/upload", {
-              method: "PUT",
-              body: formData,
-            });
+            const response = await uploadWithRetry(formData);
 
             if (!response.ok) {
               const error = await response.json();
@@ -1416,7 +1444,8 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
 
         if (failures.length > 0) {
           const failureMessages = failures.map(f => `Image ${f.index + 1}: ${f.error}`).join("\n");
-          alert(`Failed to upload ${failures.length} image(s):\n${failureMessages}`);
+          await deleteOrphanModel();
+          alert(`Failed to upload ${failures.length} image(s), so the model was not created. Please try again:\n${failureMessages}`);
           return;
         }
       }
@@ -1433,10 +1462,7 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
           formData.append("passwordHash", passwordHash);
 
           try {
-            const response = await fetch("/api/upload", {
-              method: "PUT",
-              body: formData,
-            });
+            const response = await uploadWithRetry(formData);
 
             if (!response.ok) {
               const error = await response.json();
@@ -1466,12 +1492,13 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
 
         if (failures.length > 0) {
           const failureMessages = failures.map(f => `Digital ${f.index + 1}: ${f.error}`).join("\n");
-          alert(`Failed to upload ${failures.length} digital(s):\n${failureMessages}`);
+          await deleteOrphanModel();
+          alert(`Failed to upload ${failures.length} digital(s), so the model was not created. Please try again:\n${failureMessages}`);
           return;
         }
       }
 
-      // Step 3: Update stats and other fields
+      // Step 3: Update stats and publish (all images uploaded successfully above)
       const updateResponse = await fetch(`/api/models/${modelId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -1482,6 +1509,7 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
           instagram: formData.instagram || null,
           booked: formData.booked || false,
           targetLocation: formData.targetLocation || null,
+          published: images.length > 0,
           passwordHash,
         }),
       });

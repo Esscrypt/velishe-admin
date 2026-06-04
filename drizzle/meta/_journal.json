@@ -29,6 +29,13 @@
       "when": 1773659732166,
       "tag": "0003_sticky_inertia",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1780581349257,
+      "tag": "0004_strange_shadow_king",
+      "breakpoints": true
     }
   ]
 }

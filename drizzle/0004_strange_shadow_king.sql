@@ -1,0 +1,2 @@
+ALTER TABLE "models" ADD COLUMN "published" boolean DEFAULT false NOT NULL;--> statement-breakpoint
+UPDATE "models" SET "published" = true WHERE EXISTS (SELECT 1 FROM "images" WHERE "images"."model_id" = "models"."id");

@@ -36,6 +36,7 @@ export async function GET(
         instagram: schema.models.instagram,
         booked: schema.models.booked,
         targetLocation: schema.models.targetLocation,
+        published: schema.models.published,
         imageId: schema.images.id,
         imageType: schema.images.type,
         imageData: schema.images.data,
@@ -117,6 +118,7 @@ export async function GET(
       instagram: firstRow.instagram || undefined,
       booked: firstRow.booked ?? false,
       targetLocation: firstRow.targetLocation || undefined,
+      published: firstRow.published ?? false,
       featuredImage: featuredImageSrc, // Empty string if no images, never null
       featuredImageId: featuredImageId || undefined,
       gallery,
@@ -172,6 +174,7 @@ export async function PUT(
         instagram: modelData.instagram || null,
         booked: modelData.booked ?? false,
         targetLocation: modelData.targetLocation || null,
+        published: modelData.published,
         // featuredImage and gallery are not updated here - they're handled via /api/upload
       } as any)
       .where(eq(schema.models.id, modelId))

@@ -8,6 +8,9 @@ import { config } from "dotenv";
 
 config();
 
+export const runtime = "nodejs";
+export const maxDuration = 60;
+
 export async function PUT(request: NextRequest) {
   try {
     const formData = await request.formData();
@@ -69,7 +72,7 @@ export async function PUT(request: NextRequest) {
     }
 
     // Process image and get buffer
-    const processedBuffer = await sharpInstance.webp({ quality: 85, effort: 6 }).toBuffer();
+    const processedBuffer = await sharpInstance.webp({ quality: 85, effort: 4 }).toBuffer();
     
     // Convert to base64
     const base64Data = processedBuffer.toString("base64");
@@ -182,23 +185,38 @@ export async function PUT(request: NextRequest) {
           } as any);
         }
       } else {
-        // Gallery image - use temporary high order to avoid conflicts, will be set correctly by reorder
+        // Gallery/digital image: insert with a unique high temporary order; the
+        // reorder endpoint sets final ordering. Retry on unique(model_id, order)
+        // collisions caused by concurrent parallel uploads instead of failing.
         imageId = randomUUID();
+        let inserted = false;
+        let lastInsertError: unknown;
 
-        // Use a temporary high order (10000 + timestamp component) to avoid conflicts
-        // This ensures parallel uploads don't conflict, and reorder will set final orders
-        const tempOrder = 10000 + Date.now() % 10000 + Math.floor(Math.random() * 1000);
+        for (let attempt = 0; attempt < 8 && !inserted; attempt++) {
+          const tempOrder = 10000 + Math.floor(Math.random() * 1_000_000);
+          try {
+            await db.insert(schema.images).values({
+              id: imageId,
+              modelId: modelIdNum,
+              type: imageType || "image",
+              src: `db://${imageId}`,
+              alt: `${altSlug} - ${originalName}`,
+              data: dataUri,
+              order: tempOrder,
+            } as any);
+            inserted = true;
+          } catch (insertError) {
+            lastInsertError = insertError;
+            const code = (insertError as { code?: string })?.code;
+            if (code !== "23505") {
+              throw insertError;
+            }
+          }
+        }
 
-        // Insert new image into images table with base64 data
-        await db.insert(schema.images).values({
-          id: imageId,
-          modelId: modelIdNum,
-          type: imageType || "image",
-          src: `db://${imageId}`,
-          alt: `${altSlug} - ${originalName}`,
-          data: dataUri,
-          order: tempOrder, // Temporary high order, will be corrected by reorder
-        } as any);
+        if (!inserted) {
+          throw lastInsertError;
+        }
       }
     } catch (dbError) {
       console.error("Error saving to database:", dbError);

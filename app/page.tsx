@@ -48,6 +48,7 @@ interface Model {
   targetLocation?: string;
   featuredImage?: string;
   gallery?: GalleryItem[];
+  published?: boolean;
 }
 
 function SortableItem({ model, onEdit, onDelete }: Readonly<{ model: Model; onEdit: (model: Model) => void; onDelete: (id: string) => void }>) {
@@ -92,6 +93,11 @@ function SortableItem({ model, onEdit, onDelete }: Readonly<{ model: Model; onEd
           {model.booked && (
             <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
               Booked{model.targetLocation ? ` \u2014 ${model.targetLocation}` : ""}
+            </span>
+          )}
+          {(model.published === false || !model.featuredImage || model.featuredImage.trim() === "") && (
+            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-amber-100 text-amber-800">
+              {!model.featuredImage || model.featuredImage.trim() === "" ? "No images \u2014 hidden from site" : "Draft \u2014 hidden from site"}
             </span>
           )}
         </div>
@@ -428,6 +434,17 @@ export default function AdminPage() {
             </Button>
           </div>
         </div>
+
+        {!loading && (() => {
+          const incomplete = models.filter(
+            (m) => m.published === false || !m.featuredImage || m.featuredImage.trim() === ""
+          );
+          return incomplete.length > 0 ? (
+            <div className="mb-4 rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+              {incomplete.length} model{incomplete.length === 1 ? "" : "s"} ({incomplete.map((m) => m.slug || m.name || m.id).join(", ")}) {incomplete.length === 1 ? "is" : "are"} hidden from the public site because {incomplete.length === 1 ? "it has" : "they have"} no images. Edit to add images and publish.
+            </div>
+          ) : null;
+        })()}
 
         {loading && (
           <div className="mb-4">

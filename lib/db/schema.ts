@@ -25,6 +25,7 @@ export const models = pgTable("models", {
   displayOrder: integer("display_order").default(0),
   booked: boolean("booked").default(false),
   targetLocation: text("target_location"),
+  published: boolean("published").notNull().default(false),
 });
 
 export const images = pgTable("images", {
