@@ -31,9 +31,17 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 
-async function uploadWithRetry(body: FormData, attempts = 3): Promise<Response> {
+type UploadState = "queued" | "uploading" | "done" | "error";
+type UploadStatus = { state: UploadState; attempt: number; error?: string };
+
+async function uploadWithRetry(
+  body: FormData,
+  attempts = 3,
+  onAttempt?: (attempt: number) => void
+): Promise<Response> {
   let lastError: unknown;
   for (let attempt = 0; attempt < attempts; attempt++) {
+    onAttempt?.(attempt + 1);
     try {
       const response = await fetch("/api/upload", { method: "PUT", body });
       if (response.ok) return response;
@@ -188,6 +196,7 @@ interface SortableImageItemProps {
   onMakeFeatured: (index: number) => void;
   onFullscreen: (index: number) => void;
   formatFileSize: (bytes: number) => string;
+  status?: UploadStatus;
 }
 
 function SortableImageItem({
@@ -197,6 +206,7 @@ function SortableImageItem({
   onMakeFeatured,
   onFullscreen,
   formatFileSize,
+  status,
 }: Readonly<SortableImageItemProps>) {
   const {
     attributes,
@@ -251,6 +261,30 @@ function SortableImageItem({
           className="w-full h-32 object-cover pointer-events-none"
         />
       </button>
+      {status && status.state !== "done" && (
+        <div className="absolute inset-x-0 top-0 h-32 z-20 flex items-center justify-center bg-black/45">
+          {status.state === "uploading" && (
+            <div className="flex flex-col items-center gap-1 text-white text-xs">
+              <span className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              {status.attempt > 1 && <span>retry {status.attempt}/3</span>}
+            </div>
+          )}
+          {status.state === "queued" && (
+            <span className="text-white text-xs">Queued…</span>
+          )}
+          {status.state === "error" && (
+            <div className="flex flex-col items-center gap-1 px-2 text-center text-white text-xs" title={status.error}>
+              <span className="text-red-300 text-lg leading-none">⚠</span>
+              <span>Upload failed</span>
+            </div>
+          )}
+        </div>
+      )}
+      {status?.state === "done" && (
+        <div className="absolute top-1 right-9 z-20 rounded-full bg-green-500 text-white w-5 h-5 flex items-center justify-center text-xs">
+          ✓
+        </div>
+      )}
       <div className="p-2 space-y-1 text-xs">
         <div className="font-medium truncate" title={img.file.name}>
           {img.file.name}
@@ -329,7 +363,35 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [isReordering, setIsReordering] = useState(false);
-  const [images, setImages] = useState<Array<{ 
+  const [uploadStatus, setUploadStatus] = useState<Record<string, UploadStatus>>({});
+
+  const setItemStatus = (key: string, status: UploadStatus) =>
+    setUploadStatus((prev) => ({ ...prev, [key]: status }));
+
+  const uploadTracked = async (key: string, body: FormData): Promise<Response> => {
+    setItemStatus(key, { state: "uploading", attempt: 1 });
+    try {
+      const response = await uploadWithRetry(body, 3, (attempt) =>
+        setItemStatus(key, { state: "uploading", attempt })
+      );
+      setItemStatus(
+        key,
+        response.ok
+          ? { state: "done", attempt: 1 }
+          : { state: "error", attempt: 1, error: `Upload failed (${response.status})` }
+      );
+      return response;
+    } catch (error) {
+      setItemStatus(key, {
+        state: "error",
+        attempt: 1,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw error;
+    }
+  };
+
+  const [images, setImages] = useState<Array<{
     file: File; 
     preview: string; 
     data: string;
@@ -472,7 +534,7 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
     file: File,
     maxWidth: number,
     maxHeight: number,
-    quality: number = 0.85
+    quality: number = 0.92
   ): Promise<string> => {
     return new Promise((resolve, reject) => {
       const img = new Image();
@@ -519,11 +581,13 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
     });
   };
 
-  // Automatically resize image to reduce upload size
+  // Safety-only client downscale: keep the source near full quality and only
+  // shrink very large photos so the upload stays under the ~4.5MB body limit.
+  // The server performs the real resize to final display dimensions.
   const autoResizeImage = async (
     file: File,
-    maxWidth: number = 1200,
-    maxHeight: number = 1600
+    maxWidth: number = 2250,
+    maxHeight: number = 3000
   ): Promise<{ resizedData: string; resizedFile: File; width: number; height: number }> => {
     return new Promise((resolve, reject) => {
       const img = new Image();
@@ -591,7 +655,7 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
             reader.readAsDataURL(blob);
           },
           "image/webp",
-          0.85
+          0.92
         );
       };
       img.onerror = reject;
@@ -990,6 +1054,12 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
     }
 
     setSaving(true);
+    setUploadStatus(() => {
+      const initial: Record<string, UploadStatus> = {};
+      for (const img of images) initial[img.preview] = { state: "queued", attempt: 0 };
+      for (const digital of digitals) initial[digital.preview] = { state: "queued", attempt: 0 };
+      return initial;
+    });
 
     try {
       // Use cached hash if available, otherwise request password
@@ -1007,9 +1077,13 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
       if (model) {
         const url = `/api/models/${model.id}`;
         const modelId = model.id;
-        
+
+        // Maps a newly-uploaded item's local src/preview to its persisted image id,
+        // so the reorder step can resolve ids it can't get by matching the data URI.
+        const uploadedIdByKey: Record<string, string> = {};
+
         // Identify new images (those with data and IDs starting with "new-" or no real ID)
-        const newGalleryItems = formData.gallery?.filter((item) => 
+        const newGalleryItems = formData.gallery?.filter((item) =>
           item.data && (item.id?.startsWith("new-") || !item.id)
         ) || [];
 
@@ -1054,13 +1128,15 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
             uploadFormData.append("passwordHash", passwordHash);
 
             try {
-              const response = await uploadWithRetry(uploadFormData);
+              const response = await uploadTracked(item.src, uploadFormData);
 
               if (!response.ok) {
                 const error = await response.json();
                 throw new Error(error.error || error.details || "Unknown error");
               }
 
+              const data = await response.json();
+              if (data.imageId) uploadedIdByKey[item.src] = data.imageId;
               return { success: true, index, item };
             } catch (error) {
               const errorMessage = error instanceof Error ? error.message : String(error);
@@ -1102,13 +1178,15 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
             uploadFormData.append("passwordHash", passwordHash);
 
             try {
-              const response = await uploadWithRetry(uploadFormData);
+              const response = await uploadTracked(digital.preview, uploadFormData);
 
               if (!response.ok) {
                 const error = await response.json();
                 throw new Error(error.error || error.details || "Unknown error");
               }
 
+              const data = await response.json();
+              if (data.imageId) uploadedIdByKey[digital.preview] = data.imageId;
               return { success: true, index };
             } catch (error) {
               const errorMessage = error instanceof Error ? error.message : String(error);
@@ -1165,13 +1243,15 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
             uploadFormData.append("passwordHash", passwordHash);
 
             try {
-              const response = await uploadWithRetry(uploadFormData);
+              const response = await uploadTracked(item.src, uploadFormData);
 
               if (!response.ok) {
                 const error = await response.json();
                 throw new Error(error.error || error.details || "Unknown error");
               }
 
+              const data = await response.json();
+              if (data.imageId) uploadedIdByKey[item.src] = data.imageId;
               return { success: true, index, item };
             } catch (error) {
               const errorMessage = error instanceof Error ? error.message : String(error);
@@ -1260,7 +1340,13 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
                 }
               });
             }
-            
+
+            // Resolve just-uploaded items (whose local src is a blob: preview the
+            // fetched model can't match) directly to their persisted image id.
+            for (const [key, id] of Object.entries(uploadedIdByKey)) {
+              srcToIdMap.set(key, id);
+            }
+
             // Create mapping of imageId -> order based on gallery order
             // Match gallery items to image IDs by src
             const imageOrders: Record<string, number> = {};
@@ -1398,6 +1484,7 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
 
       // Step 2: Upload all images in parallel using modelId
       const uploadedImageIds: { index: number; imageId: string }[] = [];
+      const uploadedDigitalIds: { index: number; imageId: string }[] = [];
       if (images.length > 0) {
         const uploadPromises = images.map(async (img, index) => {
           const formData = new FormData();
@@ -1408,7 +1495,7 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
           formData.append("passwordHash", passwordHash);
 
           try {
-            const response = await uploadWithRetry(formData);
+            const response = await uploadTracked(img.preview, formData);
 
             if (!response.ok) {
               const error = await response.json();
@@ -1462,13 +1549,15 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
           formData.append("passwordHash", passwordHash);
 
           try {
-            const response = await uploadWithRetry(formData);
+            const response = await uploadTracked(digital.preview, formData);
 
             if (!response.ok) {
               const error = await response.json();
               throw new Error(error.error || error.details || "Unknown error");
             }
 
+            const data = await response.json();
+            if (data.imageId) uploadedDigitalIds.push({ index, imageId: data.imageId });
             return { success: true, index };
           } catch (error) {
             const errorMessage = error instanceof Error ? error.message : String(error);
@@ -1544,6 +1633,32 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
           }
         } catch (error) {
           console.error("Error reordering images for new model:", error);
+        }
+      }
+
+      // Step 5: Persist digital order (digitals use order numbers from 1000)
+      if (uploadedDigitalIds.length > 1) {
+        try {
+          const digitalOrders: Record<string, number> = {};
+          for (const { index, imageId } of uploadedDigitalIds) {
+            if (imageId) {
+              digitalOrders[imageId] = 1000 + index;
+            }
+          }
+
+          if (Object.keys(digitalOrders).length > 0) {
+            await fetch("/api/images/reorder", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                modelId,
+                imageOrders: digitalOrders,
+                passwordHash,
+              }),
+            });
+          }
+        } catch (error) {
+          console.error("Error reordering digitals for new model:", error);
         }
       }
 
@@ -1690,6 +1805,7 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
                               onMakeFeatured={makeFeatured}
                               onFullscreen={openFullscreen}
                               formatFileSize={formatFileSize}
+                              status={uploadStatus[img.preview]}
                             />
                           ))}
                         </div>
@@ -1837,6 +1953,7 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
                                 setFullscreenDigital(idx);
                               }}
                               formatFileSize={formatFileSize}
+                              status={uploadStatus[digital.preview]}
                             />
                           ))}
                         </div>
@@ -2257,6 +2374,17 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
           )}
 
           <DialogFooter>
+            {saving && Object.keys(uploadStatus).length > 0 && (() => {
+              const all = Object.values(uploadStatus);
+              const done = all.filter((s) => s.state === "done").length;
+              const failed = all.filter((s) => s.state === "error").length;
+              return (
+                <span className="mr-auto self-center text-sm text-gray-600">
+                  Uploaded {done}/{all.length}
+                  {failed > 0 ? ` · ${failed} failed` : ""}
+                </span>
+              );
+            })()}
             <Button type="button" variant="outline" onClick={onClose}>
               Cancel
             </Button>

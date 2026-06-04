@@ -58,21 +58,21 @@ export async function PUT(request: NextRequest) {
     let sharpInstance = sharp(buffer);
 
     if (type === "featured") {
-      // Featured: 1200x1600
-      sharpInstance = sharpInstance.resize(1200, 1600, {
+      // Featured: 2000x2667
+      sharpInstance = sharpInstance.resize(2000, 2667, {
         fit: "inside",
         withoutEnlargement: true,
       });
     } else {
-      // Gallery: 1080x1440
-      sharpInstance = sharpInstance.resize(1080, 1440, {
+      // Gallery: 1600x2133
+      sharpInstance = sharpInstance.resize(1600, 2133, {
         fit: "inside",
         withoutEnlargement: true,
       });
     }
 
     // Process image and get buffer
-    const processedBuffer = await sharpInstance.webp({ quality: 85, effort: 4 }).toBuffer();
+    const processedBuffer = await sharpInstance.webp({ quality: 90, effort: 4 }).toBuffer();
     
     // Convert to base64
     const base64Data = processedBuffer.toString("base64");
