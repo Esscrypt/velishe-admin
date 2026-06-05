@@ -52,7 +52,8 @@ interface Model {
   published?: boolean;
 }
 
-function SortableItem({ model, selected, onToggleSelect, onEdit, onDelete }: Readonly<{ model: Model; selected: boolean; onToggleSelect: (id: string) => void; onEdit: (model: Model) => void; onDelete: (id: string) => void }>) {
+function SortableItem({ model, selectionIndex, onToggleSelect, onEdit, onDelete }: Readonly<{ model: Model; selectionIndex: number; onToggleSelect: (id: string) => void; onEdit: (model: Model) => void; onDelete: (id: string) => void }>) {
+  const selected = selectionIndex > 0;
   const {
     attributes,
     listeners,
@@ -74,13 +75,20 @@ function SortableItem({ model, selected, onToggleSelect, onEdit, onDelete }: Rea
       style={style}
       className="bg-white rounded-lg shadow p-4 mb-4 flex items-center gap-4"
     >
-      <input
-        type="checkbox"
-        checked={selected}
-        onChange={() => onToggleSelect(model.id)}
-        aria-label={`Select ${model.name} for PDF`}
-        className="w-5 h-5 accent-blue-600 cursor-pointer"
-      />
+      <label className="relative flex items-center cursor-pointer">
+        <input
+          type="checkbox"
+          checked={selected}
+          onChange={() => onToggleSelect(model.id)}
+          aria-label={`Select ${model.name} for PDF`}
+          className="w-5 h-5 accent-blue-600 cursor-pointer"
+        />
+        {selected && (
+          <span className="absolute -top-2 -right-2 flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-blue-600 text-white text-[11px] font-semibold leading-none">
+            {selectionIndex}
+          </span>
+        )}
+      </label>
       <div
         {...attributes}
         {...listeners}
@@ -427,6 +435,7 @@ export default function AdminPage() {
     });
   };
 
+  const selectionOrder = Array.from(selectedIds);
   const allSelected = models.length > 0 && selectedIds.size === models.length;
 
   const handleToggleSelectAll = () => {
@@ -437,7 +446,9 @@ export default function AdminPage() {
     if (selectedIds.size === 0 || generatingPdf) return;
     setGeneratingPdf(true);
     try {
-      const selected = models.filter((m) => selectedIds.has(m.id));
+      const selected = selectionOrder
+        .map((id) => models.find((m) => m.id === id))
+        .filter((m): m is Model => m !== undefined);
       await generateCombinedPortfolioPdf(selected);
     } catch (error) {
       console.error("Error generating PDF:", error);
@@ -555,7 +566,7 @@ export default function AdminPage() {
                   <SortableItem
                     key={model.id}
                     model={model}
-                    selected={selectedIds.has(model.id)}
+                    selectionIndex={selectionOrder.indexOf(model.id) + 1}
                     onToggleSelect={handleToggleSelect}
                     onEdit={handleEdit}
                     onDelete={handleDelete}
