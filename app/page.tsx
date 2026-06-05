@@ -2,10 +2,11 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { Plus, Edit, Trash2, GripVertical, List } from "lucide-react";
+import { Plus, Edit, Trash2, GripVertical, List, FileDown } from "lucide-react";
 import ModelForm from "@/components/ModelForm";
 import PasswordDialog, { getCachedPasswordHash, clearCachedPasswordHash } from "@/components/PasswordDialog";
 import { Button } from "@/components/ui/button";
+import { generateCombinedPortfolioPdf } from "@/lib/combined-portfolio-pdf";
 import { CSS } from "@dnd-kit/utilities";
 import {
   DndContext,
@@ -51,7 +52,7 @@ interface Model {
   published?: boolean;
 }
 
-function SortableItem({ model, onEdit, onDelete }: Readonly<{ model: Model; onEdit: (model: Model) => void; onDelete: (id: string) => void }>) {
+function SortableItem({ model, selected, onToggleSelect, onEdit, onDelete }: Readonly<{ model: Model; selected: boolean; onToggleSelect: (id: string) => void; onEdit: (model: Model) => void; onDelete: (id: string) => void }>) {
   const {
     attributes,
     listeners,
@@ -73,6 +74,13 @@ function SortableItem({ model, onEdit, onDelete }: Readonly<{ model: Model; onEd
       style={style}
       className="bg-white rounded-lg shadow p-4 mb-4 flex items-center gap-4"
     >
+      <input
+        type="checkbox"
+        checked={selected}
+        onChange={() => onToggleSelect(model.id)}
+        aria-label={`Select ${model.name} for PDF`}
+        className="w-5 h-5 accent-blue-600 cursor-pointer"
+      />
       <div
         {...attributes}
         {...listeners}
@@ -138,6 +146,8 @@ export default function AdminPage() {
   const [hasPendingReorder, setHasPendingReorder] = useState(false);
   const [isReordering, setIsReordering] = useState(false);
   const [loadingEditModel, setLoadingEditModel] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [generatingPdf, setGeneratingPdf] = useState(false);
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -227,6 +237,12 @@ export default function AdminPage() {
         // Remove model from list instead of reloading all
         setModels((prevModels) => prevModels.filter((m) => m.id !== id));
         setOriginalModels((prevOriginal) => prevOriginal.filter((m) => m.id !== id));
+        setSelectedIds((prev) => {
+          if (!prev.has(id)) return prev;
+          const next = new Set(prev);
+          next.delete(id);
+          return next;
+        });
       } else {
         const error = await response.json();
         alert(`Failed to delete model: ${error.error || "Unknown error"}`);
@@ -399,6 +415,38 @@ export default function AdminPage() {
     }
   };
 
+  const handleToggleSelect = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  const allSelected = models.length > 0 && selectedIds.size === models.length;
+
+  const handleToggleSelectAll = () => {
+    setSelectedIds(allSelected ? new Set() : new Set(models.map((m) => m.id)));
+  };
+
+  const handleGeneratePdf = async () => {
+    if (selectedIds.size === 0 || generatingPdf) return;
+    setGeneratingPdf(true);
+    try {
+      const selected = models.filter((m) => selectedIds.has(m.id));
+      await generateCombinedPortfolioPdf(selected);
+    } catch (error) {
+      console.error("Error generating PDF:", error);
+      alert("Failed to generate PDF. Please try again.");
+    } finally {
+      setGeneratingPdf(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gray-50 p-8">
       <div className="max-w-6xl mx-auto">
@@ -411,6 +459,21 @@ export default function AdminPage() {
                 Academy Wishlist
               </Button>
             </Link>
+            {models.length > 0 && (
+              <Button variant="outline" onClick={handleToggleSelectAll}>
+                {allSelected ? "Clear" : "Select all"}
+              </Button>
+            )}
+            <Button
+              variant="outline"
+              onClick={handleGeneratePdf}
+              disabled={selectedIds.size === 0 || generatingPdf}
+            >
+              <FileDown className="w-5 h-5" />
+              {generatingPdf
+                ? "Generating PDF..."
+                : `Generate PDF${selectedIds.size > 0 ? ` (${selectedIds.size} selected)` : ""}`}
+            </Button>
             {hasPendingReorder && (
               <>
                 <Button
@@ -492,6 +555,8 @@ export default function AdminPage() {
                   <SortableItem
                     key={model.id}
                     model={model}
+                    selected={selectedIds.has(model.id)}
+                    onToggleSelect={handleToggleSelect}
                     onEdit={handleEdit}
                     onDelete={handleDelete}
                   />
