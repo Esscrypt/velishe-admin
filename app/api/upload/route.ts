@@ -3,7 +3,6 @@ import sharp from "sharp";
 import { randomUUID } from "node:crypto";
 import { verifyPasswordHash } from "@/lib/auth";
 import { getDb, schema, eq, and } from "@/lib/db";
-import { triggerRevalidation } from "@/lib/revalidate";
 import { config } from "dotenv";
 
 config();
@@ -232,7 +231,6 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    await triggerRevalidation(modelSlug);
     return NextResponse.json({
       success: true,
       path: dataUri, // Return data URI
