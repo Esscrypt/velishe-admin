@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import PasswordDialog, { getCachedPasswordHash } from "@/components/PasswordDialog";
 import {
   Dialog,
@@ -59,6 +59,19 @@ async function uploadWithRetry(
   throw lastError instanceof Error
     ? lastError
     : new Error("Upload failed after retries");
+}
+
+function dataUriToBlob(dataUri: string): Blob {
+  const commaIndex = dataUri.indexOf(",");
+  const meta = dataUri.slice(0, commaIndex);
+  const base64 = dataUri.slice(commaIndex + 1);
+  const mime = /data:(.*?);base64/.exec(meta)?.[1] ?? "image/webp";
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return new Blob([bytes], { type: mime });
 }
 
 interface GalleryItem {
@@ -411,6 +424,7 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
     type: string;
     resizedData?: string;
   }>>([]);
+  const pendingUploadFilesRef = useRef<Map<string, File>>(new Map());
   const [fullscreenImage, setFullscreenImage] = useState<number | null>(null);
   const [fullscreenDigital, setFullscreenDigital] = useState<number | null>(null);
   const [fullscreenGalleryItem, setFullscreenGalleryItem] = useState<GalleryItem | null>(null);
@@ -796,6 +810,7 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
         ];
         
         setFormData({ ...formData, gallery: updatedGallery });
+        newImages.forEach((img) => pendingUploadFilesRef.current.set(img.preview, img.file));
       } else {
         // New model: add to images array
         setImages((prev) => [...prev, ...newImages]);
@@ -856,6 +871,7 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
         ];
         
         setFormData({ ...formData, gallery: updatedGallery });
+        newImages.forEach((img) => pendingUploadFilesRef.current.set(img.preview, img.file));
       } else {
         // New model: add to images array
         setImages((prev) => [...prev, ...newImages]);
@@ -917,6 +933,7 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
         }));
         
         setFormData({ ...formData, digitals: [...formData.digitals, ...newDigitalItems] });
+        newDigitals.forEach((img) => pendingUploadFilesRef.current.set(img.preview, img.file));
       } else {
         setDigitals((prev) => [...prev, ...newDigitals]);
       }
@@ -966,6 +983,7 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
         }));
         
         setFormData({ ...formData, digitals: [...formData.digitals, ...newDigitalItems] });
+        newDigitals.forEach((img) => pendingUploadFilesRef.current.set(img.preview, img.file));
       } else {
         setDigitals((prev) => [...prev, ...newDigitals]);
       }
@@ -1100,13 +1118,13 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
             
             // Try to find file from images array (for newly uploaded files)
             const imageMatch = images.find(img => img.preview === item.src || img.data === item.data);
+            const carriedFile = pendingUploadFilesRef.current.get(item.src);
             if (imageMatch) {
               file = imageMatch.file;
+            } else if (carriedFile) {
+              file = carriedFile;
             } else if (item.data && item.data.startsWith("data:")) {
-              // Convert base64 data URI back to File if needed
-              // This is a fallback - ideally we should keep the File object
-              const response = await fetch(item.data);
-              const blob = await response.blob();
+              const blob = dataUriToBlob(item.data);
               file = new File([blob], `image-${Date.now()}.webp`, { type: blob.type });
             }
 
@@ -1221,11 +1239,13 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
             let file: File | null = null;
             
             const digitalMatch = digitals.find(d => d.preview === item.src || d.data === item.data);
+            const carriedFile = pendingUploadFilesRef.current.get(item.src);
             if (digitalMatch) {
               file = digitalMatch.file;
+            } else if (carriedFile) {
+              file = carriedFile;
             } else if (item.data && item.data.startsWith("data:")) {
-              const response = await fetch(item.data);
-              const blob = await response.blob();
+              const blob = dataUriToBlob(item.data);
               file = new File([blob], `digital-${Date.now()}.webp`, { type: blob.type });
             }
 
