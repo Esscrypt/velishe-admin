@@ -41,6 +41,7 @@ export async function GET(
         imageType: schema.images.type,
         imageData: schema.images.data,
         imageOrder: schema.images.order,
+        imagePhash: schema.images.phash,
       })
       .from(schema.models)
       .leftJoin(schema.images, eq(schema.models.id, schema.images.modelId))
@@ -56,8 +57,9 @@ export async function GET(
     // Separate featured image (order 0) from gallery and digitals
     let featuredImageSrc = "";
     let featuredImageId = "";
-    const gallery: Array<{ id: string; type: "image"; src: string; alt: string }> = [];
-    const digitals: Array<{ id: string; type: "image"; src: string; alt: string }> = [];
+    let featuredImagePhash: string | null = null;
+    const gallery: Array<{ id: string; type: "image"; src: string; alt: string; phash: string | null }> = [];
+    const digitals: Array<{ id: string; type: "image"; src: string; alt: string; phash: string | null }> = [];
     
     for (const row of rows) {
       // Only process rows that have image data
@@ -75,6 +77,7 @@ export async function GET(
         if (row.imageOrder === 0 && imageType === "image") {
           featuredImageSrc = imageSrc;
           featuredImageId = row.imageId;
+          featuredImagePhash = row.imagePhash ?? null;
         } else if (imageType === "digital") {
           // Digitals go to digitals array
           digitals.push({
@@ -82,6 +85,7 @@ export async function GET(
             type: "image",
             src: imageSrc,
             alt: "",
+            phash: row.imagePhash ?? null,
           });
         } else {
           // Other images go to gallery - ensure src is always set
@@ -90,6 +94,7 @@ export async function GET(
             type: "image",
             src: imageSrc, // data URI from database - can be used directly as img src
             alt: "",
+            phash: row.imagePhash ?? null,
           });
         }
       }
@@ -99,6 +104,7 @@ export async function GET(
     if (!featuredImageSrc && gallery.length > 0) {
       featuredImageSrc = gallery[0].src;
       featuredImageId = gallery[0].id;
+      featuredImagePhash = gallery[0].phash;
       gallery.shift(); // Remove it from gallery since it's now featured
     }
 
@@ -121,6 +127,7 @@ export async function GET(
       published: firstRow.published ?? false,
       featuredImage: featuredImageSrc, // Empty string if no images, never null
       featuredImageId: featuredImageId || undefined,
+      featuredImagePhash: featuredImagePhash ?? undefined,
       gallery,
       digitals,
     });

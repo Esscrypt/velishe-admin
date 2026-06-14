@@ -9,6 +9,7 @@
     "lint": "eslint",
     "generate-password-hash": "bun run scripts/generate-password-hash.ts",
     "clear-db": "bun run scripts/clear-db.ts",
+    "backfill-phash": "bun run scripts/backfill-phash.ts",
     "db:generate": "drizzle-kit generate --config ./drizzle.config.ts",
     "db:migrate": "drizzle-kit migrate --config ./drizzle.config.ts",
     "drizzle-studio": "npx drizzle-kit studio --config ./drizzle.config.ts",

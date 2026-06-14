@@ -36,6 +36,7 @@ export const images = pgTable("images", {
   type: text("type").notNull().default("image"), // 'image' or 'digital'
   data: text("data").notNull(), // Base64 encoded image data
   order: integer("order").notNull(),
+  phash: text("phash"), // dHash perceptual fingerprint for duplicate detection
   createdAt: timestamp("created_at").notNull().defaultNow(),
 }, (table) => ({
   modelOrderUnique: unique().on(table.modelId, table.order),

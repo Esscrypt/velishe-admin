@@ -34,6 +34,7 @@ export async function PUT(request: NextRequest) {
     const modelId = formData.get("modelId") as string | null;
     const imageType = formData.get("imageType") as string | null; // 'image' or 'digital'
     const type = formData.get("type") as string; // 'featured' or 'gallery'
+    const phash = (formData.get("phash") as string | null) || null;
     // order param is sent by frontend but not used here — reorder endpoint handles final ordering
 
     if (!file) {
@@ -169,6 +170,7 @@ export async function PUT(request: NextRequest) {
             .set({
               data: dataUri,
               alt: `${altSlug} - ${originalName}`,
+              phash,
             } as any)
             .where(eq(schema.images.id, imageId));
         } else {
@@ -181,6 +183,7 @@ export async function PUT(request: NextRequest) {
             alt: `${altSlug} - ${originalName}`,
             data: dataUri,
             order: 0, // Featured images have order 0
+            phash,
           } as any);
         }
       } else {
@@ -202,6 +205,7 @@ export async function PUT(request: NextRequest) {
               alt: `${altSlug} - ${originalName}`,
               data: dataUri,
               order: tempOrder,
+              phash,
             } as any);
             inserted = true;
           } catch (insertError) {

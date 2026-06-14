@@ -36,6 +36,13 @@
       "when": 1780581349257,
       "tag": "0004_strange_shadow_king",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1781454783171,
+      "tag": "0005_zippy_lila_cheney",
+      "breakpoints": true
     }
   ]
 }

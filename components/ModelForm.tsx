@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import PasswordDialog, { getCachedPasswordHash } from "@/components/PasswordDialog";
+import DuplicateWarningDialog, { type DuplicateCandidate } from "@/components/DuplicateWarningDialog";
+import { dhashFromGrayscale, hamming, PHASH_DUPLICATE_THRESHOLD, DHASH_WIDTH, DHASH_HEIGHT } from "@/lib/phash";
 import {
   Dialog,
   DialogContent,
@@ -111,12 +113,31 @@ function blobToDataUrl(blob: Blob): Promise<string> {
   });
 }
 
+function computePhashFromImage(image: HTMLImageElement): string {
+  const canvas = document.createElement("canvas");
+  canvas.width = DHASH_WIDTH;
+  canvas.height = DHASH_HEIGHT;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return "";
+  ctx.drawImage(image, 0, 0, DHASH_WIDTH, DHASH_HEIGHT);
+  const { data } = ctx.getImageData(0, 0, DHASH_WIDTH, DHASH_HEIGHT);
+  const gray = new Uint8Array(DHASH_WIDTH * DHASH_HEIGHT);
+  for (let i = 0; i < gray.length; i++) {
+    const r = data[i * 4];
+    const g = data[i * 4 + 1];
+    const b = data[i * 4 + 2];
+    gray[i] = Math.round(0.299 * r + 0.587 * g + 0.114 * b);
+  }
+  return dhashFromGrayscale(gray, DHASH_WIDTH, DHASH_HEIGHT);
+}
+
 interface GalleryItem {
   id?: string;
   type: "image" | "video";
   src: string;
   alt: string;
   data?: string; // Base64 data
+  phash?: string | null;
 }
 
 interface Model {
@@ -450,6 +471,7 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
     size: number;
     type: string;
     resizedData?: string;
+    phash?: string;
   }>>([]);
   const [digitals, setDigitals] = useState<Array<{ 
     file: File; 
@@ -460,8 +482,13 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
     size: number;
     type: string;
     resizedData?: string;
+    phash?: string;
   }>>([]);
   const pendingUploadFilesRef = useRef<Map<string, File>>(new Map());
+  const [duplicateReview, setDuplicateReview] = useState<{
+    candidates: DuplicateCandidate[];
+    collection: "gallery" | "digital";
+  } | null>(null);
   const [fullscreenImage, setFullscreenImage] = useState<number | null>(null);
   const [fullscreenDigital, setFullscreenDigital] = useState<number | null>(null);
   const [fullscreenGalleryItem, setFullscreenGalleryItem] = useState<GalleryItem | null>(null);
@@ -495,6 +522,7 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
               type: "image" as const,
               src: model.featuredImage,
               alt: `${model.name} - Featured`,
+              phash: (model as { featuredImagePhash?: string }).featuredImagePhash ?? null,
             },
             ...(model.gallery || [])
           ]
@@ -640,7 +668,7 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
     file: File,
     maxWidth: number = 2250,
     maxHeight: number = 3000
-  ): Promise<{ resizedData: string; resizedFile: File; width: number; height: number }> => {
+  ): Promise<{ resizedData: string; resizedFile: File; width: number; height: number; phash: string }> => {
     return new Promise((resolve, reject) => {
       const img = new Image();
       const objectUrl = URL.createObjectURL(file);
@@ -648,6 +676,7 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
         try {
           const naturalWidth = img.width;
           const naturalHeight = img.height;
+          const phash = computePhashFromImage(img);
 
           const withinDimensions =
             naturalWidth <= maxWidth && naturalHeight <= maxHeight;
@@ -658,6 +687,7 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
               resizedFile: file,
               width: naturalWidth,
               height: naturalHeight,
+              phash,
             });
             return;
           }
@@ -692,7 +722,7 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
             { type: "image/webp" }
           );
           const resizedData = await blobToDataUrl(blob);
-          resolve({ resizedData, resizedFile, width: outWidth, height: outHeight });
+          resolve({ resizedData, resizedFile, width: outWidth, height: outHeight, phash });
         } catch (error) {
           reject(error);
         } finally {
@@ -791,6 +821,62 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
     }
   };
 
+  const checkForDuplicates = (
+    newItems: Array<{ preview: string; phash?: string }>,
+    collection: "gallery" | "digital"
+  ) => {
+    const existing: Array<{ preview: string; phash?: string | null }> =
+      collection === "gallery"
+        ? [
+            ...formData.gallery.map((g: GalleryItem) => ({ preview: g.src, phash: g.phash })),
+            ...images.map((i) => ({ preview: i.preview, phash: i.phash })),
+          ]
+        : [
+            ...(formData.digitals ?? []).map((d: GalleryItem) => ({ preview: d.src, phash: d.phash })),
+            ...digitals.map((d) => ({ preview: d.preview, phash: d.phash })),
+          ];
+
+    const seen = [...existing];
+    const flagged: DuplicateCandidate[] = [];
+    for (const item of newItems) {
+      if (item.phash) {
+        const match = seen.find(
+          (e) => e.phash && hamming(item.phash!, e.phash) <= PHASH_DUPLICATE_THRESHOLD
+        );
+        if (match) {
+          flagged.push({ key: item.preview, newPreview: item.preview, matchedPreview: match.preview });
+        }
+      }
+      seen.push({ preview: item.preview, phash: item.phash });
+    }
+
+    if (flagged.length > 0) {
+      setDuplicateReview({ candidates: flagged, collection });
+    }
+  };
+
+  const removeSkipped = (collection: "gallery" | "digital", keys: string[]) => {
+    if (keys.length === 0) return;
+    const keySet = new Set(keys);
+    if (collection === "gallery") {
+      setFormData((prev) => ({
+        ...prev,
+        gallery: prev.gallery.filter((g: GalleryItem) => !keySet.has(g.src)),
+      }));
+      setImages((prev) => prev.filter((i) => !keySet.has(i.preview)));
+    } else {
+      setFormData((prev) => ({
+        ...prev,
+        digitals: (prev.digitals ?? []).filter((d: GalleryItem) => !keySet.has(d.src)),
+      }));
+      setDigitals((prev) => prev.filter((d) => !keySet.has(d.preview)));
+    }
+    for (const key of keys) {
+      if (key.startsWith("blob:")) URL.revokeObjectURL(key);
+      pendingUploadFilesRef.current.delete(key);
+    }
+  };
+
   // Handle file drop
   const handleDrop = useCallback(async (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
@@ -805,7 +891,7 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
       const newImages = await Promise.all(
         files.map(async (file) => {
           // Automatically resize image to reduce upload size
-          const { resizedData, resizedFile, width, height } = await autoResizeImage(file);
+          const { resizedData, resizedFile, width, height, phash } = await autoResizeImage(file);
           const preview = URL.createObjectURL(resizedFile);
           
           return {
@@ -817,6 +903,7 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
             size: resizedFile.size,
             type: resizedFile.type,
             resizedData, // Resized data
+            phash,
           };
         })
       );
@@ -830,6 +917,7 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
           src: img.preview,
           alt: `${formData.name || "Image"} - ${formData.gallery.length + index}`,
           data: img.data,
+          phash: img.phash,
         }));
         
         // Insert at position 2 (after featured image at position 1)
@@ -845,13 +933,14 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
         // New model: add to images array
         setImages((prev) => [...prev, ...newImages]);
       }
+      checkForDuplicates(newImages, "gallery");
     } catch (error) {
       console.error("Error processing images:", error);
       alert("Failed to process images");
     } finally {
       setUploading(false);
     }
-  }, [model, formData]);
+  }, [model, formData, images, digitals]);
 
   // Handle file input
   const handleFileInput = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -866,7 +955,7 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
       const newImages = await Promise.all(
         files.map(async (file) => {
           // Automatically resize image to reduce upload size
-          const { resizedData, resizedFile, width, height } = await autoResizeImage(file);
+          const { resizedData, resizedFile, width, height, phash } = await autoResizeImage(file);
           const preview = URL.createObjectURL(resizedFile);
           
           return {
@@ -878,6 +967,7 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
             size: resizedFile.size,
             type: resizedFile.type,
             resizedData, // Resized data
+            phash,
           };
         })
       );
@@ -891,6 +981,7 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
           src: img.preview,
           alt: `${formData.name || "Image"} - ${formData.gallery.length + index}`,
           data: img.data,
+          phash: img.phash,
         }));
         
         // Insert at position 2 (after featured image at position 1)
@@ -906,6 +997,7 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
         // New model: add to images array
         setImages((prev) => [...prev, ...newImages]);
       }
+      checkForDuplicates(newImages, "gallery");
     } catch (error) {
       console.error("Error processing images:", error);
       alert("Failed to process images");
@@ -937,7 +1029,7 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
     try {
       const newDigitals = await Promise.all(
         files.map(async (file) => {
-          const { resizedData, resizedFile, width, height } = await autoResizeImage(file);
+          const { resizedData, resizedFile, width, height, phash } = await autoResizeImage(file);
           const preview = URL.createObjectURL(resizedFile);
           
           return {
@@ -949,6 +1041,7 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
             size: resizedFile.size,
             type: resizedFile.type,
             resizedData,
+            phash,
           };
         })
       );
@@ -960,6 +1053,7 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
           src: img.preview,
           alt: `${formData.name || "Digital"} - ${formData.digitals.length + index}`,
           data: img.data,
+          phash: img.phash,
         }));
         
         setFormData({ ...formData, digitals: [...formData.digitals, ...newDigitalItems] });
@@ -967,13 +1061,14 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
       } else {
         setDigitals((prev) => [...prev, ...newDigitals]);
       }
+      checkForDuplicates(newDigitals, "digital");
     } catch (error) {
       console.error("Error processing digitals:", error);
       alert("Failed to process digitals");
     } finally {
       setUploading(false);
     }
-  }, [model, formData]);
+  }, [model, formData, images, digitals]);
 
   // Handle digitals file input
   const handleDigitalsInput = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -987,7 +1082,7 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
     try {
       const newDigitals = await Promise.all(
         files.map(async (file) => {
-          const { resizedData, resizedFile, width, height } = await autoResizeImage(file);
+          const { resizedData, resizedFile, width, height, phash } = await autoResizeImage(file);
           const preview = URL.createObjectURL(resizedFile);
           
           return {
@@ -999,6 +1094,7 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
             size: resizedFile.size,
             type: resizedFile.type,
             resizedData,
+            phash,
           };
         })
       );
@@ -1010,6 +1106,7 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
           src: img.preview,
           alt: `${formData.name || "Digital"} - ${formData.digitals.length + index}`,
           data: img.data,
+          phash: img.phash,
         }));
         
         setFormData({ ...formData, digitals: [...formData.digitals, ...newDigitalItems] });
@@ -1017,6 +1114,7 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
       } else {
         setDigitals((prev) => [...prev, ...newDigitals]);
       }
+      checkForDuplicates(newDigitals, "digital");
     } catch (error) {
       console.error("Error processing digitals:", error);
       alert("Failed to process digitals");
@@ -1174,6 +1272,7 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
             uploadFormData.append("type", isFirstNewItem ? "featured" : "gallery");
             uploadFormData.append("order", String(order)); // Pass explicit order
             uploadFormData.append("passwordHash", passwordHash);
+            uploadFormData.append("phash", item.phash ?? "");
 
             try {
               const response = await uploadTracked(item.src, uploadFormData);
@@ -1224,6 +1323,7 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
             uploadFormData.append("type", "gallery");
             uploadFormData.append("order", String(1000 + index));
             uploadFormData.append("passwordHash", passwordHash);
+            uploadFormData.append("phash", digital.phash ?? "");
 
             try {
               const response = await uploadTracked(digital.preview, uploadFormData);
@@ -1291,6 +1391,7 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
             const digitalIndex = formData.digitals?.findIndex(d => d.id === item.id || d.src === item.src) ?? index;
             uploadFormData.append("order", String(1000 + digitalIndex));
             uploadFormData.append("passwordHash", passwordHash);
+            uploadFormData.append("phash", item.phash ?? "");
 
             try {
               const response = await uploadTracked(item.src, uploadFormData);
@@ -1543,6 +1644,7 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
           formData.append("imageType", "image");
           formData.append("type", index === 0 ? "featured" : "gallery");
           formData.append("passwordHash", passwordHash);
+          formData.append("phash", img.phash ?? "");
 
           try {
             const response = await uploadTracked(img.preview, formData);
@@ -1597,6 +1699,7 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
           formData.append("type", "gallery");
           formData.append("order", String(1000 + index)); // Use high order numbers for digitals
           formData.append("passwordHash", passwordHash);
+          formData.append("phash", digital.phash ?? "");
 
           try {
             const response = await uploadTracked(digital.preview, formData);
@@ -2455,6 +2558,16 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
         title="Admin Authentication"
         description="Please enter your admin password to continue."
       />
+
+      {duplicateReview && (
+        <DuplicateWarningDialog
+          candidates={duplicateReview.candidates}
+          onResolve={(skipKeys) => {
+            removeSkipped(duplicateReview.collection, skipKeys);
+            setDuplicateReview(null);
+          }}
+        />
+      )}
     </Dialog>
   );
 }
