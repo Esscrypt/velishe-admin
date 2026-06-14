@@ -74,6 +74,43 @@ function dataUriToBlob(dataUri: string): Blob {
   return new Blob([bytes], { type: mime });
 }
 
+// Vercel rejects serverless function request bodies larger than 4.5MB with a
+// 413 before the handler runs, so every uploaded image must stay under this.
+const MAX_UPLOAD_BYTES = 4 * 1024 * 1024;
+
+function encodeToWebp(
+  image: HTMLImageElement,
+  width: number,
+  height: number,
+  quality: number
+): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) {
+      reject(new Error("Could not get canvas context"));
+      return;
+    }
+    ctx.drawImage(image, 0, 0, width, height);
+    canvas.toBlob(
+      (blob) => (blob ? resolve(blob) : reject(new Error("Could not create blob"))),
+      "image/webp",
+      quality
+    );
+  });
+}
+
+function blobToDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+}
+
 interface GalleryItem {
   id?: string;
   type: "image" | "video";
@@ -595,9 +632,10 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
     });
   };
 
-  // Safety-only client downscale: keep the source near full quality and only
-  // shrink very large photos so the upload stays under the ~4.5MB body limit.
-  // The server performs the real resize to final display dimensions.
+  // Safety-only client downscale: keep the source near full quality, but
+  // guarantee the upload stays under Vercel's 4.5MB function body limit by
+  // shrinking quality/dimensions until the encoded webp fits. The server
+  // performs the real resize to final display dimensions.
   const autoResizeImage = async (
     file: File,
     maxWidth: number = 2250,
@@ -605,75 +643,67 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
   ): Promise<{ resizedData: string; resizedFile: File; width: number; height: number }> => {
     return new Promise((resolve, reject) => {
       const img = new Image();
+      const objectUrl = URL.createObjectURL(file);
       img.onload = async () => {
-        let { width, height } = img;
+        try {
+          const naturalWidth = img.width;
+          const naturalHeight = img.height;
 
-        // Only resize if image is larger than max dimensions
-        const needsResize = width > maxWidth || height > maxHeight;
-        
-        if (!needsResize) {
-          // No resize needed, return original
-          const originalData = await fileToBase64(file);
-          resolve({
-            resizedData: originalData,
-            resizedFile: file,
-            width,
-            height,
-          });
-          return;
-        }
-
-        // Calculate new dimensions maintaining aspect ratio
-        if (width > height && width > maxWidth) {
-          height = (height * maxWidth) / width;
-          width = maxWidth;
-        } else if (height > maxHeight) {
-          width = (width * maxHeight) / height;
-          height = maxHeight;
-        }
-
-        const canvas = document.createElement("canvas");
-        canvas.width = width;
-        canvas.height = height;
-
-        const ctx = canvas.getContext("2d");
-        if (!ctx) {
-          reject(new Error("Could not get canvas context"));
-          return;
-        }
-
-        ctx.drawImage(img, 0, 0, width, height);
-        
-        canvas.toBlob(
-          async (blob) => {
-            if (!blob) {
-              reject(new Error("Could not create blob"));
-              return;
-            }
-            
-            // Convert blob to File
-            const resizedFile = new File([blob], file.name.replace(/\.[^/.]+$/, ".webp"), {
-              type: "image/webp",
+          const withinDimensions =
+            naturalWidth <= maxWidth && naturalHeight <= maxHeight;
+          if (withinDimensions && file.size <= MAX_UPLOAD_BYTES) {
+            const originalData = await fileToBase64(file);
+            resolve({
+              resizedData: originalData,
+              resizedFile: file,
+              width: naturalWidth,
+              height: naturalHeight,
             });
-            
-            const reader = new FileReader();
-            reader.onload = () => {
-              resolve({
-                resizedData: reader.result as string,
-                resizedFile,
-                width: Math.round(width),
-                height: Math.round(height),
-              });
-            };
-            reader.onerror = reject;
-            reader.readAsDataURL(blob);
-          },
-          "image/webp",
-          0.92
-        );
+            return;
+          }
+
+          let scale = Math.min(1, maxWidth / naturalWidth, maxHeight / naturalHeight);
+          let quality = 0.92;
+          let blob: Blob | null = null;
+          let outWidth = naturalWidth;
+          let outHeight = naturalHeight;
+
+          for (let attempt = 0; attempt < 12; attempt++) {
+            outWidth = Math.max(1, Math.round(naturalWidth * scale));
+            outHeight = Math.max(1, Math.round(naturalHeight * scale));
+            blob = await encodeToWebp(img, outWidth, outHeight, quality);
+            if (blob.size <= MAX_UPLOAD_BYTES) break;
+            if (quality > 0.55) {
+              quality -= 0.12;
+            } else {
+              scale *= 0.8;
+              quality = 0.85;
+            }
+          }
+
+          if (!blob) {
+            reject(new Error("Could not create blob"));
+            return;
+          }
+
+          const resizedFile = new File(
+            [blob],
+            file.name.replace(/\.[^/.]+$/, ".webp"),
+            { type: "image/webp" }
+          );
+          const resizedData = await blobToDataUrl(blob);
+          resolve({ resizedData, resizedFile, width: outWidth, height: outHeight });
+        } catch (error) {
+          reject(error);
+        } finally {
+          URL.revokeObjectURL(objectUrl);
+        }
       };
-      img.onerror = reject;
-      img.src = URL.createObjectURL(file);
+      img.onerror = () => {
+        URL.revokeObjectURL(objectUrl);
+        reject(new Error("Could not load image"));
+      };
+      img.src = objectUrl;
     });
   };
 
