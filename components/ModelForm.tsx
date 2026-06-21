@@ -156,6 +156,8 @@ interface Model {
   instagram?: string;
   booked?: boolean;
   targetLocation?: string;
+  board?: "mainboard" | "development";
+  gender?: "male" | "female";
   featuredImage?: string;
   gallery?: GalleryItem[];
   digitals?: GalleryItem[];
@@ -423,6 +425,8 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
     instagram: model?.instagram || "",
     booked: model?.booked || false,
     targetLocation: model?.targetLocation || "",
+    board: model?.board || "mainboard" as "mainboard" | "development",
+    gender: model?.gender || "female" as "male" | "female",
     featuredImage: model?.featuredImage || "",
     gallery: model?.gallery || [],
     digitals: model?.digitals || [],
@@ -544,6 +548,8 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
         instagram: model.instagram || "",
         booked: model.booked || false,
         targetLocation: model.targetLocation || "",
+        board: model.board || "mainboard",
+        gender: model.gender || "female",
         featuredImage: model.featuredImage || "",
         gallery: combinedGallery,
         digitals: model.digitals || [],
@@ -566,6 +572,8 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
         instagram: "",
         booked: false,
         targetLocation: "",
+        board: "mainboard",
+        gender: "female",
         featuredImage: "",
         gallery: [],
         digitals: [],
@@ -2432,6 +2440,31 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
                 />
               </div>
             )}
+          </div>
+
+          <div className="flex flex-col gap-1">
+            <Label htmlFor="board">Board</Label>
+            <select
+              id="board"
+              value={formData.board}
+              onChange={(e) => setFormData({ ...formData, board: e.target.value as "mainboard" | "development" })}
+              className="border rounded px-3 py-2"
+            >
+              <option value="mainboard">Mainboard</option>
+              <option value="development">Development</option>
+            </select>
+          </div>
+          <div className="flex flex-col gap-1">
+            <Label htmlFor="gender">Gender</Label>
+            <select
+              id="gender"
+              value={formData.gender}
+              onChange={(e) => setFormData({ ...formData, gender: e.target.value as "male" | "female" })}
+              className="border rounded px-3 py-2"
+            >
+              <option value="female">Female</option>
+              <option value="male">Male</option>
+            </select>
           </div>
 
           {!passwordHash && (

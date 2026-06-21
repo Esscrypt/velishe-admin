@@ -43,6 +43,13 @@
       "when": 1781454783171,
       "tag": "0005_zippy_lila_cheney",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1782071455277,
+      "tag": "0006_windy_mikhail_rasputin",
+      "breakpoints": true
     }
   ]
 }

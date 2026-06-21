@@ -3,6 +3,7 @@ import sharp from "sharp";
 import { randomUUID } from "node:crypto";
 import { verifyPasswordHash } from "@/lib/auth";
 import { getDb, schema, eq, and } from "@/lib/db";
+import { triggerRevalidation } from "@/lib/revalidate";
 import { config } from "dotenv";
 
 config();
@@ -233,6 +234,10 @@ export async function PUT(request: NextRequest) {
         },
         { status: 500 }
       );
+    }
+
+    if (type === "featured" && modelSlug) {
+      await triggerRevalidation(modelSlug);
     }
 
     return NextResponse.json({

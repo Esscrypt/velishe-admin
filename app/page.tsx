@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Plus, Edit, Trash2, GripVertical, List, FileDown } from "lucide-react";
 import ModelForm from "@/components/ModelForm";
+import BoardsSettings from "@/components/BoardsSettings";
 import PasswordDialog, { getCachedPasswordHash, clearCachedPasswordHash } from "@/components/PasswordDialog";
 import { Button } from "@/components/ui/button";
 import { generateCombinedPortfolioPdf } from "@/lib/combined-portfolio-pdf";
@@ -47,6 +48,8 @@ interface Model {
   instagram?: string;
   booked?: boolean;
   targetLocation?: string;
+  board?: "mainboard" | "development";
+  gender?: "male" | "female";
   featuredImage?: string;
   gallery?: GalleryItem[];
   published?: boolean;
@@ -508,6 +511,8 @@ export default function AdminPage() {
             </Button>
           </div>
         </div>
+
+        <BoardsSettings password={getCachedPasswordHash() || ""} />
 
         {!loading && (() => {
           const incomplete = models.filter(
