@@ -1456,6 +1456,8 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
             instagram: dataToSend.instagram || null,
             booked: dataToSend.booked || false,
             targetLocation: dataToSend.targetLocation || null,
+            board: dataToSend.board,
+            gender: dataToSend.gender,
             published: hasImages,
             passwordHash,
             // featuredImage and gallery are NOT sent - they're handled via /api/upload
@@ -1468,9 +1470,20 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
           return;
         }
 
-        // Reorder images if gallery order has changed
-        // After uploading new images, fetch the model to get all image IDs, then reorder
-        if (formData.gallery && formData.gallery.length > 0) {
+        // Only reorder when the gallery/digitals order actually changed or new media
+        // was added — avoids a needless reorder call and "Reordering..." label on edits
+        // that didn't touch image order.
+        const orderKeys = (items: GalleryItem[]) => items.map((it) => it.id || it.src);
+        const orderChanged = (a: string[], b: string[]) =>
+          a.length !== b.length || a.some((key, i) => key !== b[i]);
+        const galleryChanged =
+          images.length > 0 ||
+          orderChanged(orderKeys(model?.gallery || []), orderKeys(formData.gallery || []));
+        const digitalsChanged =
+          digitals.length > 0 ||
+          orderChanged(orderKeys(model?.digitals || []), orderKeys(formData.digitals || []));
+
+        if (galleryChanged || digitalsChanged) {
           setIsReordering(true);
           try {
             // Fetch the model to get all images with their IDs (including newly uploaded ones)
@@ -1520,7 +1533,7 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
               }
             });
             
-            if (Object.keys(imageOrders).length > 0) {
+            if (galleryChanged && Object.keys(imageOrders).length > 0) {
               const reorderResponse = await fetch("/api/images/reorder", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -1565,7 +1578,7 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
                 }
               });
               
-              if (Object.keys(digitalOrders).length > 0) {
+              if (digitalsChanged && Object.keys(digitalOrders).length > 0) {
                 const reorderDigitalsResponse = await fetch("/api/images/reorder", {
                   method: "POST",
                   headers: { "Content-Type": "application/json" },
@@ -1613,6 +1626,8 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
         body: JSON.stringify({
           name: formData.name,
           slug: formData.slug,
+          board: formData.board,
+          gender: formData.gender,
           // Don't send stats, instagram, featuredImage, or gallery - will update later
           passwordHash,
         }),
@@ -1759,6 +1774,8 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
           instagram: formData.instagram || null,
           booked: formData.booked || false,
           targetLocation: formData.targetLocation || null,
+          board: formData.board,
+          gender: formData.gender,
           published: images.length > 0,
           passwordHash,
         }),
