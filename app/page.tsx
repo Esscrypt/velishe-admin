@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { Plus, Edit, Trash2, GripVertical, List, FileDown } from "lucide-react";
 import ModelForm from "@/components/ModelForm";
@@ -11,11 +11,12 @@ import { generateCombinedPortfolioPdf } from "@/lib/combined-portfolio-pdf";
 import { CSS } from "@dnd-kit/utilities";
 import {
   DndContext,
-  closestCenter,
+  closestCorners,
   KeyboardSensor,
   PointerSensor,
   useSensor,
   useSensors,
+  useDroppable,
 } from "@dnd-kit/core";
 import {
   useSortable,
@@ -53,6 +54,60 @@ interface Model {
   featuredImage?: string;
   gallery?: GalleryItem[];
   published?: boolean;
+}
+
+function BoardColumn({
+  id,
+  title,
+  modelIds,
+  modelsById,
+  selectionOrder,
+  onToggleSelect,
+  onEdit,
+  onDelete,
+}: Readonly<{
+  id: "mainboard" | "development";
+  title: string;
+  modelIds: string[];
+  modelsById: Map<string, Model>;
+  selectionOrder: string[];
+  onToggleSelect: (id: string) => void;
+  onEdit: (model: Model) => void;
+  onDelete: (id: string) => void;
+}>) {
+  const { setNodeRef, isOver } = useDroppable({ id });
+  return (
+    <div className="flex-1 min-w-0">
+      <h2 className="font-semibold text-lg mb-3">{title} ({modelIds.length})</h2>
+      <SortableContext items={modelIds} strategy={verticalListSortingStrategy}>
+        <div
+          ref={setNodeRef}
+          className={`min-h-[120px] rounded-md p-1 transition-colors ${isOver ? "bg-blue-50" : ""}`}
+        >
+          {modelIds.length === 0 ? (
+            <div className="text-center py-12 text-gray-400 text-sm border border-dashed rounded-md">
+              Drag a model here
+            </div>
+          ) : (
+            modelIds.map((mid) => {
+              const model = modelsById.get(mid);
+              if (!model) return null;
+              return (
+                <SortableItem
+                  key={mid}
+                  model={model}
+                  selectionIndex={selectionOrder.indexOf(mid) + 1}
+                  onToggleSelect={onToggleSelect}
+                  onEdit={onEdit}
+                  onDelete={onDelete}
+                />
+              );
+            })
+          )}
+        </div>
+      </SortableContext>
+    </div>
+  );
 }
 
 function SortableItem({ model, selectionIndex, onToggleSelect, onEdit, onDelete }: Readonly<{ model: Model; selectionIndex: number; onToggleSelect: (id: string) => void; onEdit: (model: Model) => void; onDelete: (id: string) => void }>) {
@@ -154,7 +209,22 @@ export default function AdminPage() {
   const passwordDialogActionRef = useRef<((passwordHash: string) => void) | null>(null);
   const [passwordDialogTitle, setPasswordDialogTitle] = useState("Admin Authentication");
   const [passwordDialogDescription, setPasswordDialogDescription] = useState("Please enter your admin password to continue.");
-  const [hasPendingReorder, setHasPendingReorder] = useState(false);
+  const [hasPendingChanges, setHasPendingChanges] = useState(false);
+
+  const modelsById = useMemo(() => new Map(models.map((m) => [m.id, m])), [models]);
+  const columns = useMemo(
+    () => ({
+      mainboard: models.filter((m) => m.board === "mainboard").map((m) => m.id),
+      development: models.filter((m) => m.board === "development").map((m) => m.id),
+    }),
+    [models],
+  );
+
+  const findContainer = (id: string): "mainboard" | "development" | null => {
+    if (id === "mainboard" || id === "development") return id;
+    const m = modelsById.get(id);
+    return m ? ((m.board as "mainboard" | "development") ?? "mainboard") : null;
+  };
   const [isReordering, setIsReordering] = useState(false);
   const [loadingEditModel, setLoadingEditModel] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -176,12 +246,12 @@ export default function AdminPage() {
       const modelsArray = Array.isArray(data) ? data : [];
       setModels(modelsArray);
       setOriginalModels(modelsArray);
-      setHasPendingReorder(false);
+      setHasPendingChanges(false);
     } catch (error) {
       console.error("Error fetching models:", error);
       setModels([]); // Set empty array on error
       setOriginalModels([]);
-      setHasPendingReorder(false);
+      setHasPendingChanges(false);
     } finally {
       setLoading(false);
     }
@@ -349,71 +419,92 @@ export default function AdminPage() {
     // If no model ID provided, form was closed without saving - no reload needed
   };
 
-  const performReorder = async (orderedIds: string[], passwordHash: string) => {
+  const performSaveLayout = async (passwordHash: string) => {
     setIsReordering(true);
     try {
-      const response = await fetch("/api/models/reorder", {
+      const response = await fetch("/api/models/board-layout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ orderedIds, passwordHash }),
+        body: JSON.stringify({
+          mainboard: columns.mainboard,
+          development: columns.development,
+          passwordHash,
+        }),
       });
-
       if (!response.ok) {
         const error = await response.json();
-        alert(`Failed to reorder: ${error.error || "Unknown error"}`);
-        // Revert on error - restore original order
+        alert(`Failed to save: ${error.error || "Unknown error"}`);
         setModels(originalModels);
-        // Clear cache on auth failure
-        if (response.status === 401) {
-          clearCachedPasswordHash();
-        }
+        if (response.status === 401) clearCachedPasswordHash();
       } else {
-        // Success - update original models to match current order
-        // No need to reload, the order is already correct in state
         setOriginalModels(models);
-        setHasPendingReorder(false);
+        setHasPendingChanges(false);
       }
     } catch (error) {
-      console.error("Error reordering models:", error);
-      // Revert on error - restore original order
+      console.error("Error saving board layout:", error);
       setModels(originalModels);
     } finally {
       setIsReordering(false);
     }
   };
 
+  const handleDragOver = (event: any) => {
+    const { active, over } = event;
+    if (!over) return;
+    const activeId = String(active.id);
+    const overId = String(over.id);
+    const activeContainer = findContainer(activeId);
+    const overContainer = findContainer(overId);
+    if (!activeContainer || !overContainer || activeContainer === overContainer) return;
+
+    setModels((prev) => {
+      const activeIdx = prev.findIndex((m) => m.id === activeId);
+      if (activeIdx === -1) return prev;
+      const next = [...prev];
+      const moved = { ...next[activeIdx], board: overContainer };
+      next.splice(activeIdx, 1);
+      const overIdx =
+        overId === overContainer ? next.length : next.findIndex((m) => m.id === overId);
+      next.splice(overIdx === -1 ? next.length : overIdx, 0, moved);
+      return next;
+    });
+    setHasPendingChanges(true);
+  };
+
   const handleDragEnd = (event: any) => {
     const { active, over } = event;
+    if (!over) return;
+    const activeId = String(active.id);
+    const overId = String(over.id);
+    if (activeId === overId) return;
 
-    if (active.id !== over?.id) {
-      const oldIndex = models.findIndex((m) => m.id === active.id);
-      const newIndex = models.findIndex((m) => m.id === over.id);
-
-      const newModels = arrayMove(models, oldIndex, newIndex);
-      setModels(newModels);
-      setHasPendingReorder(true);
-    }
+    setModels((prev) => {
+      const oldIndex = prev.findIndex((m) => m.id === activeId);
+      const newIndex =
+        overId === "mainboard" || overId === "development"
+          ? prev.length - 1
+          : prev.findIndex((m) => m.id === overId);
+      if (oldIndex === -1 || newIndex === -1) return prev;
+      return arrayMove(prev, oldIndex, newIndex);
+    });
+    setHasPendingChanges(true);
   };
 
   const handleSaveReorder = async () => {
-    const orderedIds = models.map((m) => m.id);
     const cachedHash = getCachedPasswordHash();
-    
     if (cachedHash) {
-      await performReorder(orderedIds, cachedHash);
+      await performSaveLayout(cachedHash);
       return;
     }
-
-    // Show password dialog
-    setPasswordDialogTitle("Reorder Models");
-    setPasswordDialogDescription("Please enter your admin password to save the new order.");
-    passwordDialogActionRef.current = (hash: string) => performReorder(orderedIds, hash);
+    setPasswordDialogTitle("Save Layout");
+    setPasswordDialogDescription("Please enter your admin password to save the board layout.");
+    passwordDialogActionRef.current = (hash: string) => performSaveLayout(hash);
     setShowPasswordDialog(true);
   };
 
   const handleCancelReorder = () => {
     setModels(originalModels);
-    setHasPendingReorder(false);
+    setHasPendingChanges(false);
   };
 
   // Loading state is now shown inline with the progress bar
@@ -488,7 +579,7 @@ export default function AdminPage() {
                 ? "Generating PDF..."
                 : `Generate PDF${selectedIds.size > 0 ? ` (${selectedIds.size} selected)` : ""}`}
             </Button>
-            {hasPendingReorder && (
+            {hasPendingChanges && (
               <>
                 <Button
                   variant="outline"
@@ -501,7 +592,7 @@ export default function AdminPage() {
                   onClick={handleSaveReorder}
                   disabled={isReordering}
                 >
-                  {isReordering ? "Saving Order..." : "Save Order"}
+                  {isReordering ? "Saving Layout..." : "Save Layout"}
                 </Button>
               </>
             )}
@@ -555,30 +646,32 @@ export default function AdminPage() {
         {!loading && (
           <DndContext
             sensors={sensors}
-            collisionDetection={closestCenter}
+            collisionDetection={closestCorners}
+            onDragOver={handleDragOver}
             onDragEnd={handleDragEnd}
           >
-            <SortableContext
-              items={models.map((m) => m.id)}
-              strategy={verticalListSortingStrategy}
-            >
-              {models.length === 0 ? (
-                <div className="text-center py-12 text-gray-500">
-                  No models found. Click "Add Model" to create one.
-                </div>
-              ) : (
-                models.map((model) => (
-                  <SortableItem
-                    key={model.id}
-                    model={model}
-                    selectionIndex={selectionOrder.indexOf(model.id) + 1}
-                    onToggleSelect={handleToggleSelect}
-                    onEdit={handleEdit}
-                    onDelete={handleDelete}
-                  />
-                ))
-              )}
-            </SortableContext>
+            <div className="flex flex-col md:flex-row gap-6">
+              <BoardColumn
+                id="mainboard"
+                title="Mainboard"
+                modelIds={columns.mainboard}
+                modelsById={modelsById}
+                selectionOrder={selectionOrder}
+                onToggleSelect={handleToggleSelect}
+                onEdit={handleEdit}
+                onDelete={handleDelete}
+              />
+              <BoardColumn
+                id="development"
+                title="Development"
+                modelIds={columns.development}
+                modelsById={modelsById}
+                selectionOrder={selectionOrder}
+                onToggleSelect={handleToggleSelect}
+                onEdit={handleEdit}
+                onDelete={handleDelete}
+              />
+            </div>
           </DndContext>
         )}
 

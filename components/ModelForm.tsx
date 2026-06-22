@@ -425,7 +425,6 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
     instagram: model?.instagram || "",
     booked: model?.booked || false,
     targetLocation: model?.targetLocation || "",
-    board: model?.board || "mainboard" as "mainboard" | "development",
     gender: model?.gender || "female" as "male" | "female",
     featuredImage: model?.featuredImage || "",
     gallery: model?.gallery || [],
@@ -548,7 +547,6 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
         instagram: model.instagram || "",
         booked: model.booked || false,
         targetLocation: model.targetLocation || "",
-        board: model.board || "mainboard",
         gender: model.gender || "female",
         featuredImage: model.featuredImage || "",
         gallery: combinedGallery,
@@ -572,7 +570,6 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
         instagram: "",
         booked: false,
         targetLocation: "",
-        board: "mainboard",
         gender: "female",
         featuredImage: "",
         gallery: [],
@@ -1456,7 +1453,6 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
             instagram: dataToSend.instagram || null,
             booked: dataToSend.booked || false,
             targetLocation: dataToSend.targetLocation || null,
-            board: dataToSend.board,
             gender: dataToSend.gender,
             published: hasImages,
             passwordHash,
@@ -1626,7 +1622,6 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
         body: JSON.stringify({
           name: formData.name,
           slug: formData.slug,
-          board: formData.board,
           gender: formData.gender,
           // Don't send stats, instagram, featuredImage, or gallery - will update later
           passwordHash,
@@ -1774,7 +1769,6 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
           instagram: formData.instagram || null,
           booked: formData.booked || false,
           targetLocation: formData.targetLocation || null,
-          board: formData.board,
           gender: formData.gender,
           published: images.length > 0,
           passwordHash,
@@ -2459,18 +2453,6 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
             )}
           </div>
 
-          <div className="flex flex-col gap-1">
-            <Label htmlFor="board">Board</Label>
-            <select
-              id="board"
-              value={formData.board}
-              onChange={(e) => setFormData({ ...formData, board: e.target.value as "mainboard" | "development" })}
-              className="border rounded px-3 py-2"
-            >
-              <option value="mainboard">Mainboard</option>
-              <option value="development">Development</option>
-            </select>
-          </div>
           <div className="flex flex-col gap-1">
             <Label htmlFor="gender">Gender</Label>
             <select

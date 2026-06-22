@@ -186,7 +186,6 @@ export async function PUT(
         booked: modelData.booked ?? false,
         targetLocation: modelData.targetLocation || null,
         published: modelData.published,
-        board: modelData.board ?? "mainboard",
         gender: modelData.gender ?? "female",
         // featuredImage and gallery are not updated here - they're handled via /api/upload
       } as any)

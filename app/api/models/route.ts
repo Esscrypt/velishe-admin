@@ -255,7 +255,6 @@ export async function POST(request: NextRequest) {
         displayOrder: modelData.displayOrder ?? (maxOrder + 1),
         booked: modelData.booked ?? false,
         targetLocation: modelData.targetLocation || null,
-        board: modelData.board || "mainboard",
         gender: modelData.gender || "female",
       } as ModelInsert)
       .returning();
