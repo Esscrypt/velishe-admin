@@ -100,6 +100,7 @@ export async function GET(request: NextRequest) {
         booked: schema.models.booked,
         targetLocation: schema.models.targetLocation,
         published: schema.models.published,
+        board: schema.models.board,
         imageId: schema.images.id,
         imageData: schema.images.data,
         imageOrder: schema.images.order,
@@ -148,6 +149,7 @@ export async function GET(request: NextRequest) {
           booked: row.booked ?? false,
           targetLocation: row.targetLocation || undefined,
           published: row.published ?? false,
+          board: row.board ?? "mainboard",
           featuredImage: "", // Will be set from images
           featuredImageId: "",
           displayOrder: row.displayOrder ?? 0,

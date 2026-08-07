@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import PasswordDialog, { getCachedPasswordHash } from "@/components/PasswordDialog";
+import PasswordDialog, { getVerifiedCachedPasswordHash } from "@/components/PasswordDialog";
 import DuplicateWarningDialog, { type DuplicateCandidate } from "@/components/DuplicateWarningDialog";
 import { dhashFromGrayscale, hamming, PHASH_DUPLICATE_THRESHOLD, DHASH_WIDTH, DHASH_HEIGHT } from "@/lib/phash";
 import {
@@ -1177,14 +1177,16 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
   };
 
   const requestPassword = (action: () => void) => {
-    const cachedHash = getCachedPasswordHash();
-    if (cachedHash) {
-      setPasswordHash(cachedHash);
-      action();
-    } else {
-      setPendingAction(() => action);
-      setShowPasswordDialog(true);
-    }
+    void (async () => {
+      const cachedHash = await getVerifiedCachedPasswordHash();
+      if (cachedHash) {
+        setPasswordHash(cachedHash);
+        action();
+      } else {
+        setPendingAction(() => action);
+        setShowPasswordDialog(true);
+      }
+    })();
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -1215,7 +1217,7 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
     try {
       // Use cached hash if available, otherwise request password
       if (!passwordHash) {
-        const cachedHash = getCachedPasswordHash();
+        const cachedHash = await getVerifiedCachedPasswordHash();
         if (!cachedHash) {
           setPendingAction(() => handleSubmit);
           setShowPasswordDialog(true);

@@ -4,8 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { Plus, Edit, Trash2, GripVertical, List, FileDown } from "lucide-react";
 import ModelForm from "@/components/ModelForm";
-import BoardsSettings from "@/components/BoardsSettings";
-import PasswordDialog, { getCachedPasswordHash, clearCachedPasswordHash } from "@/components/PasswordDialog";
+import PasswordDialog, { getCachedPasswordHash, getVerifiedCachedPasswordHash, clearCachedPasswordHash } from "@/components/PasswordDialog";
 import { Button } from "@/components/ui/button";
 import { generateCombinedPortfolioPdf } from "@/lib/combined-portfolio-pdf";
 import { CSS } from "@dnd-kit/utilities";
@@ -341,7 +340,7 @@ export default function AdminPage() {
   const handleDelete = async (id: string) => {
     if (!confirm("Are you sure you want to delete this model?")) return;
 
-    const cachedHash = getCachedPasswordHash();
+    const cachedHash = await getVerifiedCachedPasswordHash();
     if (cachedHash) {
       await performDelete(id, cachedHash);
       return;
@@ -364,7 +363,7 @@ export default function AdminPage() {
         return;
       }
 
-      const cachedHash = getCachedPasswordHash();
+      const cachedHash = await getVerifiedCachedPasswordHash();
       if (cachedHash) {
         setEditingModel(fullModel);
         setShowForm(true);
@@ -382,8 +381,8 @@ export default function AdminPage() {
     }
   };
 
-  const handleAddModel = () => {
-    const cachedHash = getCachedPasswordHash();
+  const handleAddModel = async () => {
+    const cachedHash = await getVerifiedCachedPasswordHash();
     if (cachedHash) {
       setEditingModel(null);
       setShowForm(true);
@@ -491,7 +490,7 @@ export default function AdminPage() {
   };
 
   const handleSaveReorder = async () => {
-    const cachedHash = getCachedPasswordHash();
+    const cachedHash = await getVerifiedCachedPasswordHash();
     if (cachedHash) {
       await performSaveLayout(cachedHash);
       return;
@@ -602,8 +601,6 @@ export default function AdminPage() {
             </Button>
           </div>
         </div>
-
-        <BoardsSettings password={getCachedPasswordHash() || ""} />
 
         {!loading && (() => {
           const incomplete = models.filter(

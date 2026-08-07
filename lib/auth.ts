@@ -7,8 +7,8 @@ import { createHash } from "node:crypto";
 const envResult = config({ path: ".env.local", override: true });
 config({ override: true });
 
-// Read the hash after loading
-let ADMIN_PASSWORD_HASH = process.env.ADMIN_PASSWORD_HASH;
+// Read the hash after loading; strip surrounding quotes from .env values
+let ADMIN_PASSWORD_HASH = process.env.ADMIN_PASSWORD_HASH?.trim().replace(/^["']|["']$/g, "");
 
 // Debug logging to diagnose issues
 if (typeof window === "undefined") {
@@ -40,6 +40,14 @@ if (typeof window === "undefined") {
     console.log("[auth] First 30 chars:", ADMIN_PASSWORD_HASH.substring(0, 30));
     console.log("[auth] Starts with $2:", ADMIN_PASSWORD_HASH.startsWith("$2"));
   }
+}
+
+/**
+ * Expose the configured bcrypt admin password hash for client-side verification.
+ * Returns null when ADMIN_PASSWORD_HASH is not configured.
+ */
+export function getAdminPasswordHash(): string | null {
+  return ADMIN_PASSWORD_HASH || null;
 }
 
 /**

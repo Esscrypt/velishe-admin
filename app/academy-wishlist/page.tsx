@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Plus, Trash2, ArrowLeft } from "lucide-react";
-import PasswordDialog, { getCachedPasswordHash, clearCachedPasswordHash } from "@/components/PasswordDialog";
+import PasswordDialog, { getVerifiedCachedPasswordHash, clearCachedPasswordHash } from "@/components/PasswordDialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -62,19 +62,21 @@ export default function AcademyWishlistPage() {
   };
 
   useEffect(() => {
-    const cached = getCachedPasswordHash();
-    if (cached) {
-      setIsAuthenticated(true);
-      fetchEntries(cached);
-    } else {
-      setPasswordDialogTitle("Academy Wishlist");
-      setPasswordDialogDescription("Enter your admin password to view the waitlist.");
-      passwordDialogActionRef.current = (hash: string) => {
+    void (async () => {
+      const cached = await getVerifiedCachedPasswordHash();
+      if (cached) {
         setIsAuthenticated(true);
-        fetchEntries(hash);
-      };
-      setShowPasswordDialog(true);
-    }
+        fetchEntries(cached);
+      } else {
+        setPasswordDialogTitle("Academy Wishlist");
+        setPasswordDialogDescription("Enter your admin password to view the waitlist.");
+        passwordDialogActionRef.current = (hash: string) => {
+          setIsAuthenticated(true);
+          fetchEntries(hash);
+        };
+        setShowPasswordDialog(true);
+      }
+    })();
   }, []);
 
   const performToggle = async (entry: AcademyWishlistEntry, field: "emailSent" | "confirmed", value: boolean, passwordHash: string) => {
@@ -106,8 +108,8 @@ export default function AcademyWishlistPage() {
     }
   };
 
-  const handleCheckboxChange = (entry: AcademyWishlistEntry, field: "emailSent" | "confirmed", value: boolean) => {
-    const cachedHash = getCachedPasswordHash();
+  const handleCheckboxChange = async (entry: AcademyWishlistEntry, field: "emailSent" | "confirmed", value: boolean) => {
+    const cachedHash = await getVerifiedCachedPasswordHash();
     if (cachedHash) {
       performToggle(entry, field, value, cachedHash);
       return;
@@ -138,9 +140,9 @@ export default function AcademyWishlistPage() {
     }
   };
 
-  const handleDelete = (entry: AcademyWishlistEntry) => {
+  const handleDelete = async (entry: AcademyWishlistEntry) => {
     if (!confirm(`Delete entry for ${entry.email}?`)) return;
-    const cachedHash = getCachedPasswordHash();
+    const cachedHash = await getVerifiedCachedPasswordHash();
     if (cachedHash) {
       performDelete(entry.id, cachedHash);
       return;
@@ -186,12 +188,12 @@ export default function AcademyWishlistPage() {
     }
   };
 
-  const handleAddSubmit = () => {
+  const handleAddSubmit = async () => {
     if (!newEmail.trim() || !newPhoneNumber.trim()) {
       alert("Email and phone number are required.");
       return;
     }
-    const cachedHash = getCachedPasswordHash();
+    const cachedHash = await getVerifiedCachedPasswordHash();
     if (cachedHash) {
       performCreate(cachedHash);
       return;
