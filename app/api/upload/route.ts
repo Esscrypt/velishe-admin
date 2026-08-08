@@ -55,25 +55,20 @@ export async function PUT(request: NextRequest) {
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
 
-    // Resize and optimize image
-    let sharpInstance = sharp(buffer);
+    // Preserve quality: only fit inside large display bounds (never enlarge),
+    // encode WebP at high quality. Client may have pre-capped size for the
+    // Vercel body limit; this is the canonical encode step.
+    const maxWidth = type === "featured" ? 3000 : 2400;
+    const maxHeight = type === "featured" ? 4000 : 3200;
 
-    if (type === "featured") {
-      // Featured: 2000x2667
-      sharpInstance = sharpInstance.resize(2000, 2667, {
+    const processedBuffer = await sharp(buffer)
+      .rotate() // honor EXIF orientation
+      .resize(maxWidth, maxHeight, {
         fit: "inside",
         withoutEnlargement: true,
-      });
-    } else {
-      // Gallery: 1600x2133
-      sharpInstance = sharpInstance.resize(1600, 2133, {
-        fit: "inside",
-        withoutEnlargement: true,
-      });
-    }
-
-    // Process image and get buffer
-    const processedBuffer = await sharpInstance.webp({ quality: 90, effort: 4 }).toBuffer();
+      })
+      .webp({ quality: 95, effort: 4, smartSubsample: false })
+      .toBuffer();
     
     // Convert to base64
     const base64Data = processedBuffer.toString("base64");
@@ -162,20 +157,26 @@ export async function PUT(request: NextRequest) {
           ))
           .limit(1);
 
-        imageId = existingFeatured.length > 0 ? existingFeatured[0].id : randomUUID();
-
         if (existingFeatured.length > 0) {
-          // Update existing featured image
+          // Replace with a new id so CDN-cached /api/images/{id}/ URLs on the
+          // public FE cannot keep serving the previous bytes.
           await db
-            .update(schema.images)
-            .set({
-              data: dataUri,
-              alt: `${altSlug} - ${originalName}`,
-              phash,
-            } as any)
-            .where(eq(schema.images.id, imageId));
+            .delete(schema.images)
+            .where(eq(schema.images.id, existingFeatured[0].id));
+          imageId = randomUUID();
+          await db.insert(schema.images).values({
+            id: imageId,
+            modelId: modelIdNum,
+            type: imageType || "image",
+            src: `db://${imageId}`,
+            alt: `${altSlug} - ${originalName}`,
+            data: dataUri,
+            order: 0,
+            phash,
+          } as any);
         } else {
           // Insert new featured image with order 0
+          imageId = randomUUID();
           await db.insert(schema.images).values({
             id: imageId,
             modelId: modelIdNum,
@@ -236,7 +237,7 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    if (type === "featured" && modelSlug) {
+    if (modelSlug) {
       await triggerRevalidation(modelSlug);
     }
 

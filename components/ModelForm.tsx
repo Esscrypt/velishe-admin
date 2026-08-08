@@ -628,7 +628,7 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
     file: File,
     maxWidth: number,
     maxHeight: number,
-    quality: number = 0.92
+    quality: number = 0.95
   ): Promise<string> => {
     return new Promise((resolve, reject) => {
       const img = new Image();
@@ -675,14 +675,14 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
     });
   };
 
-  // Safety-only client downscale: keep the source near full quality, but
-  // guarantee the upload stays under Vercel's 4.5MB function body limit by
-  // shrinking quality/dimensions until the encoded webp fits. The server
-  // performs the real resize to final display dimensions.
+  // Safety-only client downscale for Vercel's ~4.5MB body limit.
+  // Prefer keeping original bytes; if too large, scale dimensions first and
+  // only then gently reduce WebP quality (floor 0.88) — server re-encodes
+  // at quality 95 as the canonical store.
   const autoResizeImage = async (
     file: File,
-    maxWidth: number = 2250,
-    maxHeight: number = 3000
+    maxWidth: number = 3000,
+    maxHeight: number = 4000
   ): Promise<{ resizedData: string; resizedFile: File; width: number; height: number; phash: string }> => {
     return new Promise((resolve, reject) => {
       const img = new Image();
@@ -708,7 +708,7 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
           }
 
           let scale = Math.min(1, maxWidth / naturalWidth, maxHeight / naturalHeight);
-          let quality = 0.92;
+          let quality = 0.95;
           let blob: Blob | null = null;
           let outWidth = naturalWidth;
           let outHeight = naturalHeight;
@@ -718,11 +718,13 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
             outHeight = Math.max(1, Math.round(naturalHeight * scale));
             blob = await encodeToWebp(img, outWidth, outHeight, quality);
             if (blob.size <= MAX_UPLOAD_BYTES) break;
-            if (quality > 0.55) {
-              quality -= 0.12;
+            // Prefer shrinking pixels over crushing quality.
+            if (scale > 0.55) {
+              scale *= 0.85;
+            } else if (quality > 0.88) {
+              quality = Math.max(0.88, quality - 0.03);
             } else {
               scale *= 0.8;
-              quality = 0.85;
             }
           }
 
