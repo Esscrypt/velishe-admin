@@ -36,6 +36,16 @@ import {
 type UploadState = "queued" | "uploading" | "done" | "error";
 type UploadStatus = { state: UploadState; attempt: number; error?: string };
 
+/** Accepts a full URL, @handle, or bare username and stores a canonical Instagram URL. */
+function normalizeInstagramUrl(value: string | null | undefined): string | null {
+  const trimmed = (value ?? "").trim();
+  if (!trimmed) return null;
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  const handle = trimmed.replace(/^@/, "").replace(/^instagram\.com\//i, "").replace(/^www\.instagram\.com\//i, "");
+  if (!handle) return null;
+  return `https://www.instagram.com/${handle}/`;
+}
+
 async function uploadWithRetry(
   body: FormData,
   attempts = 3,
@@ -1452,7 +1462,7 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
             slug: dataToSend.slug,
             name: dataToSend.name,
             stats: dataToSend.stats,
-            instagram: dataToSend.instagram || null,
+            instagram: normalizeInstagramUrl(dataToSend.instagram),
             booked: dataToSend.booked || false,
             targetLocation: dataToSend.targetLocation || null,
             gender: dataToSend.gender,
@@ -1768,7 +1778,7 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
           slug: formData.slug,
           name: formData.name,
           stats: formData.stats,
-          instagram: formData.instagram || null,
+          instagram: normalizeInstagramUrl(formData.instagram),
           booked: formData.booked || false,
           targetLocation: formData.targetLocation || null,
           gender: formData.gender,
@@ -2425,7 +2435,8 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
             <Label htmlFor="instagram">Instagram</Label>
             <Input
               id="instagram"
-              type="url"
+              type="text"
+              placeholder="@username or https://instagram.com/username"
               value={formData.instagram}
               onChange={(e) => handleInputChange("instagram", e.target.value)}
             />
