@@ -748,41 +748,77 @@ export default function BlogAdminPage() {
 
         {loading ? (
           <p className="text-gray-500">Loading…</p>
+        ) : posts.length === 0 ? (
+          <div className="bg-white border rounded-lg p-6">
+            <p className="text-gray-500">No posts yet.</p>
+          </div>
         ) : (
-          <div className="bg-white border rounded-lg divide-y">
-            {posts.length === 0 ? (
-              <p className="p-6 text-gray-500">No posts yet.</p>
-            ) : (
-              posts.map((post) => (
-                <div
-                  key={post.id}
-                  className="flex items-center justify-between gap-4 p-4"
-                >
-                  <div className="min-w-0">
-                    <p className="font-medium truncate">{post.title}</p>
-                    <p className="text-xs text-gray-500">
-                      {postStatusLabel(post)} · /{post.slug}/ · Newsletter{" "}
-                      {post.newsletterSentAt ? "sent" : "not sent"}
-                    </p>
+          <div className="space-y-8">
+            {(
+              [
+                {
+                  key: "published" as const,
+                  title: "Published",
+                  items: posts.filter((post) => derivePublishMode(post) === "now"),
+                },
+                {
+                  key: "scheduled" as const,
+                  title: "Scheduled",
+                  items: posts.filter(
+                    (post) => derivePublishMode(post) === "scheduled",
+                  ),
+                },
+                {
+                  key: "draft" as const,
+                  title: "Drafts",
+                  items: posts.filter(
+                    (post) => derivePublishMode(post) === "draft",
+                  ),
+                },
+              ] as const
+            ).map((group) =>
+              group.items.length === 0 ? null : (
+                <section key={group.key} aria-labelledby={`blog-group-${group.key}`}>
+                  <h2
+                    id={`blog-group-${group.key}`}
+                    className="text-sm font-semibold uppercase tracking-wide text-gray-500 mb-2"
+                  >
+                    {group.title} ({group.items.length})
+                  </h2>
+                  <div className="bg-white border rounded-lg divide-y">
+                    {group.items.map((post) => (
+                      <div
+                        key={post.id}
+                        className="flex items-center justify-between gap-4 p-4"
+                      >
+                        <div className="min-w-0">
+                          <p className="font-medium truncate">{post.title}</p>
+                          <p className="text-xs text-gray-500">
+                            {postStatusLabel(post)} · /{post.slug}/ · Newsletter{" "}
+                            {post.newsletterSentAt ? "sent" : "not sent"}
+                          </p>
+                        </div>
+                        <div className="flex gap-2 shrink-0">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => void openEdit(post)}
+                          >
+                            Edit
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => void handleDelete(post)}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                  <div className="flex gap-2 shrink-0">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => void openEdit(post)}
-                    >
-                      Edit
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => void handleDelete(post)}
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </Button>
-                  </div>
-                </div>
-              ))
+                </section>
+              ),
             )}
           </div>
         )}
