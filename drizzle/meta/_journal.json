@@ -64,6 +64,13 @@
       "when": 1788113000000,
       "tag": "0008_rename_excerpt_to_teaser",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1788113100000,
+      "tag": "0009_scheduled_publish",
+      "breakpoints": true
     }
   ]
 }

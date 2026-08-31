@@ -78,6 +78,7 @@ export const blogPosts = pgTable("blog_posts", {
   body: text("body").notNull(),
   published: boolean("published").notNull().default(false),
   publishedAt: timestamp("published_at"),
+  scheduledPublishAt: timestamp("scheduled_publish_at"),
   newsletterSentAt: timestamp("newsletter_sent_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),

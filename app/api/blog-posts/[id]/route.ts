@@ -3,6 +3,10 @@ import { asc, eq } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
 import { verifyAuth } from "@/lib/auth-middleware";
 import { slugifyTitle, uniqueSlug } from "@/lib/blog-slug";
+import {
+  applyPublishIntent,
+  resolvePublishIntent,
+} from "@/lib/blog-publish";
 import { triggerRevalidation } from "@/lib/revalidate";
 import { config } from "dotenv";
 
@@ -71,6 +75,7 @@ export async function PUT(request: NextRequest, context: RouteContext) {
       teaser?: string | null;
       body?: string;
       published?: boolean;
+      scheduledPublishAt?: string | null;
     };
     const authResult = await verifyAuth(body);
     if (!authResult.authorized) return authResult.response!;
@@ -119,12 +124,31 @@ export async function PUT(request: NextRequest, context: RouteContext) {
         ? slugifyTitle(body.slug.trim())
         : current.slug;
     const slug = uniqueSlug(requestedSlug, otherSlugs);
-    const published = body.published === true;
     const now = new Date();
-    const publishedAt =
-      published && !current.publishedAt
-        ? now
-        : current.publishedAt;
+    const publishIntent = resolvePublishIntent(
+      {
+        published: body.published,
+        scheduledPublishAt: body.scheduledPublishAt,
+      },
+      {
+        published: current.published,
+        publishedAt: current.publishedAt,
+        scheduledPublishAt: current.scheduledPublishAt,
+      },
+      now,
+    );
+    if ("error" in publishIntent) {
+      return NextResponse.json({ error: publishIntent.error }, { status: 400 });
+    }
+    const publishFields = applyPublishIntent(
+      publishIntent,
+      {
+        published: current.published,
+        publishedAt: current.publishedAt,
+        scheduledPublishAt: current.scheduledPublishAt,
+      },
+      now,
+    );
 
     const updated = await db
       .update(schema.blogPosts)
@@ -136,14 +160,19 @@ export async function PUT(request: NextRequest, context: RouteContext) {
             ? body.teaser.trim()
             : null,
         body: postBody,
-        published,
-        publishedAt,
+        published: publishFields.published,
+        publishedAt: publishFields.publishedAt,
+        scheduledPublishAt: publishFields.scheduledPublishAt,
         updatedAt: now,
       } as typeof schema.blogPosts.$inferInsert)
       .where(eq(schema.blogPosts.id, postId))
       .returning();
 
-    if (published || current.published) {
+    if (
+      publishFields.published ||
+      current.published ||
+      publishFields.scheduledPublishAt
+    ) {
       await triggerRevalidation({ type: "blog", slug: updated[0].slug });
     }
 

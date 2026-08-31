@@ -15,6 +15,12 @@ import PasswordDialog, {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  isScheduledForFuture,
+  postStatusLabel,
+} from "@/lib/blog-publish";
+
+type PublishMode = "draft" | "now" | "scheduled";
 
 type BlogPost = {
   id: number;
@@ -24,11 +30,49 @@ type BlogPost = {
   body: string;
   published: boolean;
   publishedAt: string | null;
+  scheduledPublishAt: string | null;
   newsletterSentAt: string | null;
   createdAt: string;
   updatedAt: string;
   images?: BlogImageMeta[];
 };
+
+function toDatetimeLocalValue(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function derivePublishMode(post: BlogPost): PublishMode {
+  if (post.published) return "now";
+  if (isScheduledForFuture(post.scheduledPublishAt)) return "scheduled";
+  return "draft";
+}
+
+function buildPublishPayload(
+  publishMode: PublishMode,
+  scheduledAtLocal: string,
+): { published: boolean; scheduledPublishAt: string | null } {
+  if (publishMode === "now") {
+    return { published: true, scheduledPublishAt: null };
+  }
+  if (publishMode === "scheduled") {
+    if (!scheduledAtLocal.trim()) {
+      throw new Error("Choose a schedule date and time");
+    }
+    const scheduled = new Date(scheduledAtLocal);
+    if (Number.isNaN(scheduled.getTime())) {
+      throw new Error("Schedule date is invalid");
+    }
+    if (scheduled.getTime() <= Date.now()) {
+      throw new Error("Schedule date must be in the future");
+    }
+    return { published: false, scheduledPublishAt: scheduled.toISOString() };
+  }
+  return { published: false, scheduledPublishAt: null };
+}
 
 export default function BlogAdminPage() {
   const [posts, setPosts] = useState<BlogPost[]>([]);
@@ -45,7 +89,8 @@ export default function BlogAdminPage() {
   const [title, setTitle] = useState("");
   const [teaser, setTeaser] = useState("");
   const [body, setBody] = useState("");
-  const [published, setPublished] = useState(false);
+  const [publishMode, setPublishMode] = useState<PublishMode>("draft");
+  const [scheduledAtLocal, setScheduledAtLocal] = useState("");
   const [saving, setSaving] = useState(false);
   const [sending, setSending] = useState(false);
   const [previewEmail, setPreviewEmail] = useState(
@@ -116,7 +161,8 @@ export default function BlogAdminPage() {
     setTitle("");
     setTeaser("");
     setBody("");
-    setPublished(false);
+    setPublishMode("draft");
+    setScheduledAtLocal("");
     setImages([]);
   };
 
@@ -136,7 +182,8 @@ export default function BlogAdminPage() {
     setTitle(full.title);
     setTeaser(full.teaser ?? "");
     setBody(full.body);
-    setPublished(full.published);
+    setPublishMode(derivePublishMode(full));
+    setScheduledAtLocal(toDatetimeLocalValue(full.scheduledPublishAt));
     setImages(full.images ?? []);
   };
 
@@ -158,12 +205,23 @@ export default function BlogAdminPage() {
     }
     setSaving(true);
     try {
+      let publishPayload: {
+        published: boolean;
+        scheduledPublishAt: string | null;
+      };
+      try {
+        publishPayload = buildPublishPayload(publishMode, scheduledAtLocal);
+      } catch (error) {
+        alert(error instanceof Error ? error.message : "Invalid publish settings");
+        return;
+      }
+
       const payload = {
         passwordHash,
         title: title.trim(),
         teaser: teaser.trim() || null,
         body: body.trim(),
-        published,
+        ...publishPayload,
       };
       const response = editing
         ? await fetch(`/api/blog-posts/${editing.id}`, {
@@ -330,14 +388,51 @@ export default function BlogAdminPage() {
                 Preview post
               </Button>
             </div>
-            <label className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={published}
-                onChange={(e) => setPublished(e.target.checked)}
-              />
-              Published
-            </label>
+            <fieldset className="space-y-3">
+              <legend className="text-sm font-medium">Publishing</legend>
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="radio"
+                  name="publish-mode"
+                  checked={publishMode === "draft"}
+                  onChange={() => setPublishMode("draft")}
+                />
+                Save as draft
+              </label>
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="radio"
+                  name="publish-mode"
+                  checked={publishMode === "now"}
+                  onChange={() => setPublishMode("now")}
+                />
+                Publish now
+              </label>
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="radio"
+                  name="publish-mode"
+                  checked={publishMode === "scheduled"}
+                  onChange={() => setPublishMode("scheduled")}
+                />
+                Schedule publish
+              </label>
+              {publishMode === "scheduled" ? (
+                <div>
+                  <Label htmlFor="scheduled-at">Publish at</Label>
+                  <Input
+                    id="scheduled-at"
+                    type="datetime-local"
+                    value={scheduledAtLocal}
+                    onChange={(event) => setScheduledAtLocal(event.target.value)}
+                    className="max-w-xs"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    Uses your local timezone. A cron job publishes within about a minute of this time.
+                  </p>
+                </div>
+              ) : null}
+            </fieldset>
             {editing && (
               <div className="space-y-3 border-t pt-4">
                 <p className="text-sm font-medium">
@@ -413,8 +508,7 @@ export default function BlogAdminPage() {
                   <div className="min-w-0">
                     <p className="font-medium truncate">{post.title}</p>
                     <p className="text-xs text-gray-500">
-                      {post.published ? "Published" : "Draft"} · /{post.slug}/ ·
-                      Newsletter{" "}
+                      {postStatusLabel(post)} · /{post.slug}/ · Newsletter{" "}
                       {post.newsletterSentAt ? "sent" : "not sent"}
                     </p>
                   </div>
@@ -461,7 +555,7 @@ export default function BlogAdminPage() {
         title={title}
         teaser={teaser}
         body={body}
-        published={published}
+        published={publishMode === "now"}
         slug={editing?.slug}
         images={images}
       />

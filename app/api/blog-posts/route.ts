@@ -3,6 +3,10 @@ import { desc } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
 import { verifyAuth } from "@/lib/auth-middleware";
 import { slugifyTitle, uniqueSlug } from "@/lib/blog-slug";
+import {
+  applyPublishIntent,
+  resolvePublishIntent,
+} from "@/lib/blog-publish";
 import { triggerRevalidation } from "@/lib/revalidate";
 import { config } from "dotenv";
 
@@ -49,6 +53,7 @@ export async function POST(request: NextRequest) {
       teaser?: string | null;
       body?: string;
       published?: boolean;
+      scheduledPublishAt?: string | null;
     };
     const authResult = await verifyAuth(body);
     if (!authResult.authorized) return authResult.response!;
@@ -79,8 +84,31 @@ export async function POST(request: NextRequest) {
         ? slugifyTitle(body.slug.trim())
         : slugifyTitle(title);
     const slug = uniqueSlug(requestedSlug, existingSlugs);
-    const published = body.published === true;
     const now = new Date();
+    const publishIntent = resolvePublishIntent(
+      {
+        published: body.published,
+        scheduledPublishAt: body.scheduledPublishAt,
+      },
+      {
+        published: false,
+        publishedAt: null,
+        scheduledPublishAt: null,
+      },
+      now,
+    );
+    if ("error" in publishIntent) {
+      return NextResponse.json({ error: publishIntent.error }, { status: 400 });
+    }
+    const publishFields = applyPublishIntent(
+      publishIntent,
+      {
+        published: false,
+        publishedAt: null,
+        scheduledPublishAt: null,
+      },
+      now,
+    );
 
     const inserted = await db
       .insert(schema.blogPosts)
@@ -92,13 +120,14 @@ export async function POST(request: NextRequest) {
             ? body.teaser.trim()
             : null,
         body: postBody,
-        published,
-        publishedAt: published ? now : null,
+        published: publishFields.published,
+        publishedAt: publishFields.publishedAt,
+        scheduledPublishAt: publishFields.scheduledPublishAt,
         updatedAt: now,
       } as typeof schema.blogPosts.$inferInsert)
       .returning();
 
-    if (published) {
+    if (publishFields.published) {
       await triggerRevalidation({ type: "blog", slug });
     }
 
