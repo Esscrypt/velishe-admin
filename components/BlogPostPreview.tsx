@@ -95,28 +95,30 @@ function PreviewMedia({
 
     if (parsed?.provider === "instagram") {
       return (
-        <a
-          href={parsed.canonicalUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="mx-auto block w-full max-w-[540px] overflow-hidden bg-gray-100"
-        >
-          {media.hasData ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={`/api/blog-images/${media.id}`}
-              alt={title}
-              className="h-auto w-full"
+        <div className="mx-auto w-full max-w-[540px] bg-black">
+          <div className="overflow-hidden">
+            <iframe
+              src={parsed.embedUrl}
+              title={title}
+              className="block w-full border-0"
+              style={{ height: 760, maxWidth: "100%" }}
+              allow="autoplay; clipboard-write; encrypted-media; picture-in-picture; web-share; fullscreen"
+              allowFullScreen
+              loading="lazy"
+              referrerPolicy="strict-origin-when-cross-origin"
             />
-          ) : (
-            <div className="flex min-h-[280px] items-center justify-center bg-gray-200 text-sm text-gray-700">
-              Instagram video
-            </div>
-          )}
-          <p className="bg-white px-2 py-2 text-center text-sm underline">
-            Open on Instagram
+          </div>
+          <p className="bg-white px-2 py-2 text-center text-sm">
+            <a
+              href={parsed.canonicalUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline hover:text-gray-800"
+            >
+              Open on Instagram
+            </a>
           </p>
-        </a>
+        </div>
       );
     }
 
@@ -166,6 +168,7 @@ type BlogPostPreviewProps = {
   slug?: string;
   images: BlogImageMeta[];
   modelName?: string | null;
+  modelSlug?: string | null;
   credits?: unknown;
 };
 
@@ -179,6 +182,7 @@ export default function BlogPostPreview({
   slug,
   images,
   modelName = null,
+  modelSlug = null,
   credits: creditsRaw = null,
 }: BlogPostPreviewProps) {
   const bodyHtml = useMemo(() => markdownToSafeHtml(body), [body]);
@@ -195,7 +199,11 @@ export default function BlogPostPreview({
   const gallery = sortedImages.filter((image) => image.order > 0);
   const liveUrl =
     published && slug ? `${PRODUCTION_SITE_URL}/blog/${slug}/` : null;
+  const modelPageUrl = modelSlug?.trim()
+    ? `${PRODUCTION_SITE_URL}/models/${modelSlug.trim()}/`
+    : null;
   const titleFallback = title.trim() || "Untitled post";
+  const modelLabel = modelName?.trim() || null;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -223,8 +231,22 @@ export default function BlogPostPreview({
           <h1 className="font-serif text-4xl sm:text-5xl font-bold text-black leading-tight mb-3">
             {titleFallback}
           </h1>
-          {modelName?.trim() ? (
-            <p className="text-sm text-gray-500 mb-3">With {modelName.trim()}</p>
+          {modelLabel ? (
+            <p className="text-sm text-gray-500 mb-3">
+              With{" "}
+              {modelPageUrl ? (
+                <a
+                  href={modelPageUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="underline hover:text-gray-800"
+                >
+                  {modelLabel}
+                </a>
+              ) : (
+                modelLabel
+              )}
+            </p>
           ) : null}
           {teaser.trim() ? (
             <p className="text-lg text-gray-600 mb-3">{teaser.trim()}</p>
@@ -266,16 +288,27 @@ export default function BlogPostPreview({
             </div>
           ) : null}
 
-          {modelName?.trim() || credits ? (
+          {modelLabel || credits ? (
             <section className="mt-10 border-t border-gray-200 pt-8">
               <h2 className="font-serif text-2xl font-bold text-black mb-4">
                 Credits
               </h2>
               <ul className="space-y-2 text-base text-gray-800">
-                {modelName?.trim() ? (
+                {modelLabel ? (
                   <li>
                     <span className="text-gray-500">Talent — </span>
-                    {modelName.trim()}
+                    {modelPageUrl ? (
+                      <a
+                        href={modelPageUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="underline hover:text-gray-800"
+                      >
+                        {modelLabel}
+                      </a>
+                    ) : (
+                      modelLabel
+                    )}
                   </li>
                 ) : null}
                 {credits?.brand ? (

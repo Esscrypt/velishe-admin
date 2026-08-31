@@ -814,6 +814,9 @@ export default function BlogAdminPage() {
         modelName={
           modelOptions.find((option) => option.id === modelId)?.name ?? null
         }
+        modelSlug={
+          modelOptions.find((option) => option.id === modelId)?.slug ?? null
+        }
         credits={formToCreditsPayload(creditsForm)}
       />
     </div>
