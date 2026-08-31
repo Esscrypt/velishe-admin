@@ -20,6 +20,20 @@ import { normalizeBlogCredits } from "@/lib/blog-credits";
 const BLOG_PROSE_CLASS =
   "blog-prose text-base leading-7 text-gray-900 space-y-4 [&_h2]:font-serif [&_h2]:text-2xl [&_h2]:font-bold [&_h2]:mt-8 [&_h3]:font-serif [&_h3]:text-xl [&_h3]:font-bold [&_h3]:mt-6 [&_a]:underline [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_blockquote]:border-l-2 [&_blockquote]:border-black [&_blockquote]:pl-4 [&_blockquote]:italic [&_blockquote]:text-gray-700";
 
+function CreditName({ name, url }: { name: string; url: string | null }) {
+  if (!url) return <>{name}</>;
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="underline hover:text-gray-800"
+    >
+      {name}
+    </a>
+  );
+}
+
 function youtubePreviewSrc(parsed: ParsedBlogVideo): string {
   const url = new URL(parsed.embedUrl);
   url.searchParams.set("autoplay", "1");
@@ -81,18 +95,28 @@ function PreviewMedia({
 
     if (parsed?.provider === "instagram") {
       return (
-        <div className="mx-auto w-full max-w-[540px] overflow-hidden bg-black">
-          <iframe
-            src={parsed.embedUrl}
-            title={title}
-            className="w-full border-0"
-            style={{ height: 720, maxWidth: "100%" }}
-            allow="autoplay; clipboard-write; encrypted-media; picture-in-picture; web-share"
-            allowFullScreen
-            loading="lazy"
-            referrerPolicy="strict-origin-when-cross-origin"
-          />
-        </div>
+        <a
+          href={parsed.canonicalUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="mx-auto block w-full max-w-[540px] overflow-hidden bg-gray-100"
+        >
+          {media.hasData ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={`/api/blog-images/${media.id}`}
+              alt={title}
+              className="h-auto w-full"
+            />
+          ) : (
+            <div className="flex min-h-[280px] items-center justify-center bg-gray-200 text-sm text-gray-700">
+              Instagram video
+            </div>
+          )}
+          <p className="bg-white px-2 py-2 text-center text-sm underline">
+            Open on Instagram
+          </p>
+        </a>
       );
     }
 
@@ -175,7 +199,7 @@ export default function BlogPostPreview({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto p-0 gap-0">
+      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto overscroll-contain p-0 gap-0">
         <DialogHeader className="px-6 pt-6 pb-4 border-b">
           <DialogTitle>Post preview</DialogTitle>
           <DialogDescription>
@@ -257,31 +281,47 @@ export default function BlogPostPreview({
                 {credits?.brand ? (
                   <li>
                     <span className="text-gray-500">Brand — </span>
-                    {credits.brand.name}
+                    <CreditName
+                      name={credits.brand.name}
+                      url={credits.brand.url}
+                    />
                   </li>
                 ) : null}
                 {credits?.photographer ? (
                   <li>
                     <span className="text-gray-500">Photographer — </span>
-                    {credits.photographer.name}
+                    <CreditName
+                      name={credits.photographer.name}
+                      url={credits.photographer.url}
+                    />
                   </li>
                 ) : null}
                 {credits?.magazine ? (
                   <li>
                     <span className="text-gray-500">Magazine — </span>
-                    {credits.magazine.name}
+                    <CreditName
+                      name={credits.magazine.name}
+                      url={credits.magazine.url}
+                    />
                   </li>
                 ) : null}
                 {credits?.extras.map((row) => (
                   <li key={`${row.role}-${row.name}`}>
                     <span className="text-gray-500">{row.role} — </span>
-                    {row.name}
+                    <CreditName name={row.name} url={row.url} />
                   </li>
                 ))}
                 {credits?.sourceUrl ? (
                   <li>
                     <span className="text-gray-500">Source — </span>
-                    View original
+                    <a
+                      href={credits.sourceUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="underline hover:text-gray-800"
+                    >
+                      View original
+                    </a>
                   </li>
                 ) : null}
               </ul>

@@ -1,10 +1,10 @@
-import { and, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import type { getDb } from "@/lib/db";
 import { schema } from "@/lib/db";
 
 type Db = NonNullable<ReturnType<typeof getDb>>;
 
-/** undefined = omit from update; null = clear; number = set if published model exists */
+/** undefined = omit from update; null = clear; number = set if model exists */
 export async function resolveBlogModelId(
   db: Db,
   raw: unknown,
@@ -14,9 +14,9 @@ export async function resolveBlogModelId(
   const id = typeof raw === "number" ? raw : Number.parseInt(String(raw), 10);
   if (Number.isNaN(id)) return null;
   const rows = await db
-    .select({ id: schema.models.id, slug: schema.models.slug })
+    .select({ id: schema.models.id })
     .from(schema.models)
-    .where(and(eq(schema.models.id, id), eq(schema.models.published, true)))
+    .where(eq(schema.models.id, id))
     .limit(1);
   return rows[0]?.id ?? null;
 }

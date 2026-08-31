@@ -44,6 +44,7 @@ type ModelOption = {
   id: number;
   name: string;
   slug: string;
+  published?: boolean;
 };
 
 type CreditsForm = {
@@ -180,11 +181,12 @@ export default function BlogAdminPage() {
         published?: boolean;
       }>;
       const options = data
-        .filter((row) => row.published && row.name && row.slug)
+        .filter((row) => row.name && row.slug)
         .map((row) => ({
           id: Number.parseInt(row.id, 10),
           name: row.name,
           slug: row.slug,
+          published: Boolean(row.published),
         }))
         .filter((row) => !Number.isNaN(row.id))
         .sort((a, b) => a.name.localeCompare(b.name));
@@ -485,6 +487,7 @@ export default function BlogAdminPage() {
                 {modelOptions.map((option) => (
                   <option key={option.id} value={option.id}>
                     {option.name}
+                    {option.published === false ? " (unpublished)" : ""}
                   </option>
                 ))}
               </select>
