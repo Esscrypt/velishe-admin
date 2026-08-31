@@ -2,7 +2,10 @@
 
 import { useMemo } from "react";
 import { markdownToSafeHtml } from "@/lib/blog-markdown";
-import { parseBlogVideoUrl } from "@/lib/blog-video-url";
+import {
+  parseBlogVideoUrl,
+  type ParsedBlogVideo,
+} from "@/lib/blog-video-url";
 import { PRODUCTION_SITE_URL } from "@/lib/user-fe-url";
 import {
   Dialog,
@@ -16,6 +19,23 @@ import type { BlogImageMeta } from "@/components/BlogImageManager";
 const BLOG_PROSE_CLASS =
   "blog-prose text-base leading-7 text-gray-900 space-y-4 [&_h2]:font-serif [&_h2]:text-2xl [&_h2]:font-bold [&_h2]:mt-8 [&_h3]:font-serif [&_h3]:text-xl [&_h3]:font-bold [&_h3]:mt-6 [&_a]:underline [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_blockquote]:border-l-2 [&_blockquote]:border-black [&_blockquote]:pl-4 [&_blockquote]:italic [&_blockquote]:text-gray-700";
 
+function youtubePreviewSrc(parsed: ParsedBlogVideo): string {
+  const url = new URL(parsed.embedUrl);
+  url.searchParams.set("autoplay", "1");
+  url.searchParams.set("mute", "1");
+  url.searchParams.set("playsinline", "1");
+  url.searchParams.set("rel", "0");
+  return url.toString();
+}
+
+function vimeoPreviewSrc(parsed: ParsedBlogVideo): string {
+  const url = new URL(parsed.embedUrl);
+  url.searchParams.set("autoplay", "1");
+  url.searchParams.set("muted", "1");
+  url.searchParams.set("playsinline", "1");
+  return url.toString();
+}
+
 function PreviewMedia({
   media,
   titleFallback,
@@ -23,21 +43,58 @@ function PreviewMedia({
   media: BlogImageMeta;
   titleFallback: string;
 }) {
-  if (media.kind === "video" && media.videoUrl) {
+  const isVideo = media.kind === "video" || Boolean(media.videoUrl);
+  if (isVideo && media.videoUrl) {
     const parsed = parseBlogVideoUrl(media.videoUrl);
-    if (parsed?.provider === "youtube" || parsed?.provider === "vimeo") {
+    const title = media.alt || titleFallback || "Video";
+
+    if (parsed?.provider === "youtube") {
       return (
         <div className="aspect-video w-full overflow-hidden bg-black">
           <iframe
-            src={parsed.embedUrl}
-            title={media.alt || titleFallback || "Video"}
-            className="h-full w-full"
-            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+            src={youtubePreviewSrc(parsed)}
+            title={title}
+            className="h-full w-full border-0"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
             allowFullScreen
+            referrerPolicy="strict-origin-when-cross-origin"
           />
         </div>
       );
     }
+
+    if (parsed?.provider === "vimeo") {
+      return (
+        <div className="aspect-video w-full overflow-hidden bg-black">
+          <iframe
+            src={vimeoPreviewSrc(parsed)}
+            title={title}
+            className="h-full w-full border-0"
+            allow="autoplay; fullscreen; picture-in-picture"
+            allowFullScreen
+            referrerPolicy="strict-origin-when-cross-origin"
+          />
+        </div>
+      );
+    }
+
+    if (parsed?.provider === "instagram") {
+      return (
+        <div className="mx-auto w-full max-w-[540px] overflow-hidden bg-black">
+          <iframe
+            src={parsed.embedUrl}
+            title={title}
+            className="w-full border-0"
+            style={{ height: 720, maxWidth: "100%" }}
+            allow="autoplay; clipboard-write; encrypted-media; picture-in-picture; web-share"
+            allowFullScreen
+            loading="lazy"
+            referrerPolicy="strict-origin-when-cross-origin"
+          />
+        </div>
+      );
+    }
+
     return (
       <a
         href={media.videoUrl}
@@ -49,15 +106,15 @@ function PreviewMedia({
           // eslint-disable-next-line @next/next/no-img-element
           <img
             src={`/api/blog-images/${media.id}`}
-            alt={media.alt || titleFallback}
+            alt={title}
             className="h-auto w-full"
           />
         ) : (
-          <div className="flex aspect-[9/16] max-h-[480px] items-center justify-center bg-gray-200 text-sm text-gray-700">
-            Watch on Instagram
+          <div className="flex min-h-[280px] items-center justify-center bg-gray-200 text-sm text-gray-700">
+            Open video
           </div>
         )}
-        <p className="px-2 py-2 text-sm underline">Watch on Instagram</p>
+        <p className="px-2 py-2 text-sm underline">Open video</p>
       </a>
     );
   }
@@ -146,7 +203,10 @@ export default function BlogPostPreview({
 
           {cover ? (
             <div className="mb-8 w-full overflow-hidden bg-gray-100">
-              <PreviewMedia media={cover} titleFallback={titleFallback} />
+              {/* Remount embeds when dialog opens so autoplay/iframes initialize */}
+              {open ? (
+                <PreviewMedia media={cover} titleFallback={titleFallback} />
+              ) : null}
             </div>
           ) : null}
 
@@ -159,7 +219,12 @@ export default function BlogPostPreview({
             <div className="mt-10 grid grid-cols-2 gap-2">
               {gallery.map((image) => (
                 <div key={image.id} className="overflow-hidden bg-gray-100">
-                  <PreviewMedia media={image} titleFallback={titleFallback} />
+                  {open ? (
+                    <PreviewMedia
+                      media={image}
+                      titleFallback={titleFallback}
+                    />
+                  ) : null}
                 </div>
               ))}
             </div>
