@@ -32,9 +32,16 @@ type BlogPost = {
   publishedAt: string | null;
   scheduledPublishAt: string | null;
   newsletterSentAt: string | null;
+  modelId?: number | null;
   createdAt: string;
   updatedAt: string;
   images?: BlogImageMeta[];
+};
+
+type ModelOption = {
+  id: number;
+  name: string;
+  slug: string;
 };
 
 function toDatetimeLocalValue(iso: string | null | undefined): string {
@@ -101,6 +108,33 @@ export default function BlogAdminPage() {
   const [images, setImages] = useState<BlogImageMeta[]>([]);
   const [passwordHash, setPasswordHash] = useState("");
   const [confirmedCount, setConfirmedCount] = useState(0);
+  const [modelId, setModelId] = useState<number | null>(null);
+  const [modelOptions, setModelOptions] = useState<ModelOption[]>([]);
+
+  const fetchModelOptions = async () => {
+    try {
+      const response = await fetch("/api/models");
+      if (!response.ok) return;
+      const data = (await response.json()) as Array<{
+        id: string;
+        name: string;
+        slug: string;
+        published?: boolean;
+      }>;
+      const options = data
+        .filter((row) => row.published && row.name && row.slug)
+        .map((row) => ({
+          id: Number.parseInt(row.id, 10),
+          name: row.name,
+          slug: row.slug,
+        }))
+        .filter((row) => !Number.isNaN(row.id))
+        .sort((a, b) => a.name.localeCompare(b.name));
+      setModelOptions(options);
+    } catch {
+      /* ignore */
+    }
+  };
 
   const fetchPosts = async (hash: string) => {
     setLoading(true);
@@ -139,6 +173,7 @@ export default function BlogAdminPage() {
 
   useEffect(() => {
     void (async () => {
+      void fetchModelOptions();
       const cached = await getVerifiedCachedPasswordHash();
       if (cached) {
         setIsAuthenticated(true);
@@ -164,6 +199,7 @@ export default function BlogAdminPage() {
     setPublishMode("draft");
     setScheduledAtLocal("");
     setImages([]);
+    setModelId(null);
   };
 
   const openCreate = () => {
@@ -185,6 +221,7 @@ export default function BlogAdminPage() {
     setPublishMode(derivePublishMode(full));
     setScheduledAtLocal(toDatetimeLocalValue(full.scheduledPublishAt));
     setImages(full.images ?? []);
+    setModelId(full.modelId ?? null);
   };
 
   const reloadImages = async () => {
@@ -221,6 +258,7 @@ export default function BlogAdminPage() {
         title: title.trim(),
         teaser: teaser.trim() || null,
         body: body.trim(),
+        modelId,
         ...publishPayload,
       };
       const response = editing
@@ -371,6 +409,24 @@ export default function BlogAdminPage() {
                 value={teaser}
                 onChange={(e) => setTeaser(e.target.value)}
               />
+            </div>
+            <div>
+              <Label htmlFor="featured-model">Featured model</Label>
+              <select
+                id="featured-model"
+                className="mt-1 flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                value={modelId ?? ""}
+                onChange={(e) =>
+                  setModelId(e.target.value ? Number(e.target.value) : null)
+                }
+              >
+                <option value="">None</option>
+                {modelOptions.map((option) => (
+                  <option key={option.id} value={option.id}>
+                    {option.name}
+                  </option>
+                ))}
+              </select>
             </div>
             <div>
               <Label htmlFor="body">Body (Markdown)</Label>
@@ -558,6 +614,9 @@ export default function BlogAdminPage() {
         published={publishMode === "now"}
         slug={editing?.slug}
         images={images}
+        modelName={
+          modelOptions.find((option) => option.id === modelId)?.name ?? null
+        }
       />
     </div>
   );

@@ -7,6 +7,7 @@ import {
   applyPublishIntent,
   resolvePublishIntent,
 } from "@/lib/blog-publish";
+import { resolveBlogModelId, modelSlugForId } from "@/lib/blog-model-id";
 import { triggerRevalidation } from "@/lib/revalidate";
 import { config } from "dotenv";
 
@@ -54,6 +55,7 @@ export async function POST(request: NextRequest) {
       body?: string;
       published?: boolean;
       scheduledPublishAt?: string | null;
+      modelId?: number | null;
     };
     const authResult = await verifyAuth(body);
     if (!authResult.authorized) return authResult.response!;
@@ -110,6 +112,9 @@ export async function POST(request: NextRequest) {
       now,
     );
 
+    const resolvedModelId = await resolveBlogModelId(db, body.modelId);
+    const modelId = resolvedModelId === undefined ? null : resolvedModelId;
+
     const inserted = await db
       .insert(schema.blogPosts)
       .values({
@@ -123,12 +128,17 @@ export async function POST(request: NextRequest) {
         published: publishFields.published,
         publishedAt: publishFields.publishedAt,
         scheduledPublishAt: publishFields.scheduledPublishAt,
+        modelId,
         updatedAt: now,
       } as typeof schema.blogPosts.$inferInsert)
       .returning();
 
     if (publishFields.published) {
       await triggerRevalidation({ type: "blog", slug });
+      const modelSlug = await modelSlugForId(db, modelId);
+      if (modelSlug) {
+        await triggerRevalidation({ type: "models", slug: modelSlug });
+      }
     }
 
     return NextResponse.json(inserted[0], { status: 201 });

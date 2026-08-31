@@ -7,6 +7,7 @@ import {
   applyPublishIntent,
   resolvePublishIntent,
 } from "@/lib/blog-publish";
+import { resolveBlogModelId, modelSlugForId } from "@/lib/blog-model-id";
 import { triggerRevalidation } from "@/lib/revalidate";
 import { config } from "dotenv";
 
@@ -87,6 +88,7 @@ export async function PUT(request: NextRequest, context: RouteContext) {
       body?: string;
       published?: boolean;
       scheduledPublishAt?: string | null;
+      modelId?: number | null;
     };
     const authResult = await verifyAuth(body);
     if (!authResult.authorized) return authResult.response!;
@@ -161,6 +163,14 @@ export async function PUT(request: NextRequest, context: RouteContext) {
       now,
     );
 
+    const previousModelId = current.modelId ?? null;
+    const hasModelIdKey = Object.prototype.hasOwnProperty.call(body, "modelId");
+    const resolvedModelId = hasModelIdKey
+      ? await resolveBlogModelId(db, body.modelId)
+      : undefined;
+    const nextModelId =
+      resolvedModelId === undefined ? previousModelId : resolvedModelId;
+
     const updated = await db
       .update(schema.blogPosts)
       .set({
@@ -174,6 +184,7 @@ export async function PUT(request: NextRequest, context: RouteContext) {
         published: publishFields.published,
         publishedAt: publishFields.publishedAt,
         scheduledPublishAt: publishFields.scheduledPublishAt,
+        ...(hasModelIdKey ? { modelId: nextModelId } : {}),
         updatedAt: now,
       } as typeof schema.blogPosts.$inferInsert)
       .where(eq(schema.blogPosts.id, postId))
@@ -185,6 +196,14 @@ export async function PUT(request: NextRequest, context: RouteContext) {
       publishFields.scheduledPublishAt
     ) {
       await triggerRevalidation({ type: "blog", slug: updated[0].slug });
+      const slugsToRevalidate = new Set<string>();
+      const prevSlug = await modelSlugForId(db, previousModelId);
+      const nextSlug = await modelSlugForId(db, nextModelId);
+      if (prevSlug) slugsToRevalidate.add(prevSlug);
+      if (nextSlug) slugsToRevalidate.add(nextSlug);
+      for (const modelSlug of slugsToRevalidate) {
+        await triggerRevalidation({ type: "models", slug: modelSlug });
+      }
     }
 
     return NextResponse.json(updated[0]);

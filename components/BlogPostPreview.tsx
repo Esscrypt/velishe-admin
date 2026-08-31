@@ -140,6 +140,7 @@ type BlogPostPreviewProps = {
   published: boolean;
   slug?: string;
   images: BlogImageMeta[];
+  modelName?: string | null;
 };
 
 export default function BlogPostPreview({
@@ -151,6 +152,7 @@ export default function BlogPostPreview({
   published,
   slug,
   images,
+  modelName = null,
 }: BlogPostPreviewProps) {
   const bodyHtml = useMemo(() => markdownToSafeHtml(body), [body]);
 
@@ -190,6 +192,9 @@ export default function BlogPostPreview({
           <h1 className="font-serif text-4xl sm:text-5xl font-bold text-black leading-tight mb-3">
             {titleFallback}
           </h1>
+          {modelName?.trim() ? (
+            <p className="text-sm text-gray-500 mb-3">With {modelName.trim()}</p>
+          ) : null}
           {teaser.trim() ? (
             <p className="text-lg text-gray-600 mb-3">{teaser.trim()}</p>
           ) : null}

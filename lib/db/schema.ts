@@ -80,6 +80,9 @@ export const blogPosts = pgTable("blog_posts", {
   publishedAt: timestamp("published_at"),
   scheduledPublishAt: timestamp("scheduled_publish_at"),
   newsletterSentAt: timestamp("newsletter_sent_at"),
+  modelId: integer("model_id").references(() => models.id, {
+    onDelete: "set null",
+  }),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
