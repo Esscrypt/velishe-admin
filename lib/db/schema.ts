@@ -1,4 +1,4 @@
-import { pgTable, text, integer, timestamp, serial, unique, boolean, pgEnum } from "drizzle-orm/pg-core";
+import { pgTable, text, integer, timestamp, serial, unique, boolean, pgEnum, jsonb } from "drizzle-orm/pg-core";
 
 export const boardEnum = pgEnum("board", ["mainboard", "development"]);
 export const genderEnum = pgEnum("gender", ["male", "female"]);
@@ -83,6 +83,7 @@ export const blogPosts = pgTable("blog_posts", {
   modelId: integer("model_id").references(() => models.id, {
     onDelete: "set null",
   }),
+  credits: jsonb("credits"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

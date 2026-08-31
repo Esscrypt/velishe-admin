@@ -8,6 +8,7 @@ import {
   resolvePublishIntent,
 } from "@/lib/blog-publish";
 import { resolveBlogModelId, modelSlugForId } from "@/lib/blog-model-id";
+import { normalizeBlogCredits } from "@/lib/blog-credits";
 import { triggerRevalidation } from "@/lib/revalidate";
 import { config } from "dotenv";
 
@@ -63,6 +64,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
 
     return NextResponse.json({
       ...posts[0],
+      credits: normalizeBlogCredits(posts[0].credits),
       images: images.map((image) => ({
         ...image,
         kind: (image.kind as "image" | "video") || "image",
@@ -89,6 +91,7 @@ export async function PUT(request: NextRequest, context: RouteContext) {
       published?: boolean;
       scheduledPublishAt?: string | null;
       modelId?: number | null;
+      credits?: unknown;
     };
     const authResult = await verifyAuth(body);
     if (!authResult.authorized) return authResult.response!;
@@ -170,6 +173,10 @@ export async function PUT(request: NextRequest, context: RouteContext) {
       : undefined;
     const nextModelId =
       resolvedModelId === undefined ? previousModelId : resolvedModelId;
+    const hasCreditsKey = Object.prototype.hasOwnProperty.call(body, "credits");
+    const nextCredits = hasCreditsKey
+      ? normalizeBlogCredits(body.credits)
+      : undefined;
 
     const updated = await db
       .update(schema.blogPosts)
@@ -185,6 +192,7 @@ export async function PUT(request: NextRequest, context: RouteContext) {
         publishedAt: publishFields.publishedAt,
         scheduledPublishAt: publishFields.scheduledPublishAt,
         ...(hasModelIdKey ? { modelId: nextModelId } : {}),
+        ...(hasCreditsKey ? { credits: nextCredits } : {}),
         updatedAt: now,
       } as typeof schema.blogPosts.$inferInsert)
       .where(eq(schema.blogPosts.id, postId))

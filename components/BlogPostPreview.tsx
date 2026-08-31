@@ -15,6 +15,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import type { BlogImageMeta } from "@/components/BlogImageManager";
+import { normalizeBlogCredits } from "@/lib/blog-credits";
 
 const BLOG_PROSE_CLASS =
   "blog-prose text-base leading-7 text-gray-900 space-y-4 [&_h2]:font-serif [&_h2]:text-2xl [&_h2]:font-bold [&_h2]:mt-8 [&_h3]:font-serif [&_h3]:text-xl [&_h3]:font-bold [&_h3]:mt-6 [&_a]:underline [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_blockquote]:border-l-2 [&_blockquote]:border-black [&_blockquote]:pl-4 [&_blockquote]:italic [&_blockquote]:text-gray-700";
@@ -141,6 +142,7 @@ type BlogPostPreviewProps = {
   slug?: string;
   images: BlogImageMeta[];
   modelName?: string | null;
+  credits?: unknown;
 };
 
 export default function BlogPostPreview({
@@ -153,8 +155,13 @@ export default function BlogPostPreview({
   slug,
   images,
   modelName = null,
+  credits: creditsRaw = null,
 }: BlogPostPreviewProps) {
   const bodyHtml = useMemo(() => markdownToSafeHtml(body), [body]);
+  const credits = useMemo(
+    () => normalizeBlogCredits(creditsRaw),
+    [creditsRaw],
+  );
 
   const sortedImages = useMemo(
     () => [...images].sort((a, b) => a.order - b.order),
@@ -233,6 +240,52 @@ export default function BlogPostPreview({
                 </div>
               ))}
             </div>
+          ) : null}
+
+          {modelName?.trim() || credits ? (
+            <section className="mt-10 border-t border-gray-200 pt-8">
+              <h2 className="font-serif text-2xl font-bold text-black mb-4">
+                Credits
+              </h2>
+              <ul className="space-y-2 text-base text-gray-800">
+                {modelName?.trim() ? (
+                  <li>
+                    <span className="text-gray-500">Talent — </span>
+                    {modelName.trim()}
+                  </li>
+                ) : null}
+                {credits?.brand ? (
+                  <li>
+                    <span className="text-gray-500">Brand — </span>
+                    {credits.brand.name}
+                  </li>
+                ) : null}
+                {credits?.photographer ? (
+                  <li>
+                    <span className="text-gray-500">Photographer — </span>
+                    {credits.photographer.name}
+                  </li>
+                ) : null}
+                {credits?.magazine ? (
+                  <li>
+                    <span className="text-gray-500">Magazine — </span>
+                    {credits.magazine.name}
+                  </li>
+                ) : null}
+                {credits?.extras.map((row) => (
+                  <li key={`${row.role}-${row.name}`}>
+                    <span className="text-gray-500">{row.role} — </span>
+                    {row.name}
+                  </li>
+                ))}
+                {credits?.sourceUrl ? (
+                  <li>
+                    <span className="text-gray-500">Source — </span>
+                    View original
+                  </li>
+                ) : null}
+              </ul>
+            </section>
           ) : null}
 
           {liveUrl ? (

@@ -19,6 +19,7 @@ import {
   isScheduledForFuture,
   postStatusLabel,
 } from "@/lib/blog-publish";
+import type { BlogCredits } from "@/lib/blog-credits";
 
 type PublishMode = "draft" | "now" | "scheduled";
 
@@ -33,6 +34,7 @@ type BlogPost = {
   scheduledPublishAt: string | null;
   newsletterSentAt: string | null;
   modelId?: number | null;
+  credits?: BlogCredits | null;
   createdAt: string;
   updatedAt: string;
   images?: BlogImageMeta[];
@@ -43,6 +45,61 @@ type ModelOption = {
   name: string;
   slug: string;
 };
+
+type CreditsForm = {
+  brandName: string;
+  brandUrl: string;
+  photographerName: string;
+  photographerUrl: string;
+  magazineName: string;
+  magazineUrl: string;
+  extras: { role: string; name: string; url: string }[];
+  sourceUrl: string;
+};
+
+function emptyCreditsForm(): CreditsForm {
+  return {
+    brandName: "",
+    brandUrl: "",
+    photographerName: "",
+    photographerUrl: "",
+    magazineName: "",
+    magazineUrl: "",
+    extras: [],
+    sourceUrl: "",
+  };
+}
+
+function formToCreditsPayload(form: CreditsForm) {
+  return {
+    brand: { name: form.brandName, url: form.brandUrl || null },
+    photographer: {
+      name: form.photographerName,
+      url: form.photographerUrl || null,
+    },
+    magazine: { name: form.magazineName, url: form.magazineUrl || null },
+    extras: form.extras,
+    sourceUrl: form.sourceUrl || null,
+  };
+}
+
+function creditsToForm(credits: BlogCredits | null | undefined): CreditsForm {
+  if (!credits) return emptyCreditsForm();
+  return {
+    brandName: credits.brand?.name ?? "",
+    brandUrl: credits.brand?.url ?? "",
+    photographerName: credits.photographer?.name ?? "",
+    photographerUrl: credits.photographer?.url ?? "",
+    magazineName: credits.magazine?.name ?? "",
+    magazineUrl: credits.magazine?.url ?? "",
+    extras: (credits.extras ?? []).map((row) => ({
+      role: row.role,
+      name: row.name,
+      url: row.url ?? "",
+    })),
+    sourceUrl: credits.sourceUrl ?? "",
+  };
+}
 
 function toDatetimeLocalValue(iso: string | null | undefined): string {
   if (!iso) return "";
@@ -110,6 +167,7 @@ export default function BlogAdminPage() {
   const [confirmedCount, setConfirmedCount] = useState(0);
   const [modelId, setModelId] = useState<number | null>(null);
   const [modelOptions, setModelOptions] = useState<ModelOption[]>([]);
+  const [creditsForm, setCreditsForm] = useState<CreditsForm>(emptyCreditsForm());
 
   const fetchModelOptions = async () => {
     try {
@@ -200,6 +258,7 @@ export default function BlogAdminPage() {
     setScheduledAtLocal("");
     setImages([]);
     setModelId(null);
+    setCreditsForm(emptyCreditsForm());
   };
 
   const openCreate = () => {
@@ -222,6 +281,7 @@ export default function BlogAdminPage() {
     setScheduledAtLocal(toDatetimeLocalValue(full.scheduledPublishAt));
     setImages(full.images ?? []);
     setModelId(full.modelId ?? null);
+    setCreditsForm(creditsToForm(full.credits));
   };
 
   const reloadImages = async () => {
@@ -259,6 +319,7 @@ export default function BlogAdminPage() {
         teaser: teaser.trim() || null,
         body: body.trim(),
         modelId,
+        credits: formToCreditsPayload(creditsForm),
         ...publishPayload,
       };
       const response = editing
@@ -428,6 +489,139 @@ export default function BlogAdminPage() {
                 ))}
               </select>
             </div>
+            <fieldset className="space-y-3 border rounded-md p-4">
+              <legend className="text-sm font-medium px-1">Credits</legend>
+              {(
+                [
+                  ["brand", "Brand", "brandName", "brandUrl"],
+                  [
+                    "photographer",
+                    "Photographer",
+                    "photographerName",
+                    "photographerUrl",
+                  ],
+                  ["magazine", "Magazine", "magazineName", "magazineUrl"],
+                ] as const
+              ).map(([key, label, nameKey, urlKey]) => (
+                <div key={key} className="grid gap-2 sm:grid-cols-2">
+                  <div>
+                    <Label htmlFor={`credit-${key}-name`}>{label} name</Label>
+                    <Input
+                      id={`credit-${key}-name`}
+                      value={creditsForm[nameKey]}
+                      onChange={(e) =>
+                        setCreditsForm((prev) => ({
+                          ...prev,
+                          [nameKey]: e.target.value,
+                        }))
+                      }
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor={`credit-${key}-url`}>{label} URL</Label>
+                    <Input
+                      id={`credit-${key}-url`}
+                      value={creditsForm[urlKey]}
+                      placeholder="https://"
+                      onChange={(e) =>
+                        setCreditsForm((prev) => ({
+                          ...prev,
+                          [urlKey]: e.target.value,
+                        }))
+                      }
+                    />
+                  </div>
+                </div>
+              ))}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label>Extras</Label>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() =>
+                      setCreditsForm((prev) => ({
+                        ...prev,
+                        extras: [
+                          ...prev.extras,
+                          { role: "", name: "", url: "" },
+                        ],
+                      }))
+                    }
+                  >
+                    Add row
+                  </Button>
+                </div>
+                {creditsForm.extras.map((row, index) => (
+                  <div
+                    key={index}
+                    className="grid gap-2 sm:grid-cols-[1fr_1fr_1fr_auto]"
+                  >
+                    <Input
+                      placeholder="Role"
+                      value={row.role}
+                      onChange={(e) =>
+                        setCreditsForm((prev) => {
+                          const extras = [...prev.extras];
+                          extras[index] = { ...extras[index], role: e.target.value };
+                          return { ...prev, extras };
+                        })
+                      }
+                    />
+                    <Input
+                      placeholder="Name"
+                      value={row.name}
+                      onChange={(e) =>
+                        setCreditsForm((prev) => {
+                          const extras = [...prev.extras];
+                          extras[index] = { ...extras[index], name: e.target.value };
+                          return { ...prev, extras };
+                        })
+                      }
+                    />
+                    <Input
+                      placeholder="https://"
+                      value={row.url}
+                      onChange={(e) =>
+                        setCreditsForm((prev) => {
+                          const extras = [...prev.extras];
+                          extras[index] = { ...extras[index], url: e.target.value };
+                          return { ...prev, extras };
+                        })
+                      }
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() =>
+                        setCreditsForm((prev) => ({
+                          ...prev,
+                          extras: prev.extras.filter((_, i) => i !== index),
+                        }))
+                      }
+                    >
+                      Remove
+                    </Button>
+                  </div>
+                ))}
+              </div>
+              <div>
+                <Label htmlFor="credit-source">Source URL</Label>
+                <Input
+                  id="credit-source"
+                  value={creditsForm.sourceUrl}
+                  placeholder="https://www.instagram.com/..."
+                  onChange={(e) =>
+                    setCreditsForm((prev) => ({
+                      ...prev,
+                      sourceUrl: e.target.value,
+                    }))
+                  }
+                />
+              </div>
+            </fieldset>
             <div>
               <Label htmlFor="body">Body (Markdown)</Label>
               <div className="mt-1">
@@ -617,6 +811,7 @@ export default function BlogAdminPage() {
         modelName={
           modelOptions.find((option) => option.id === modelId)?.name ?? null
         }
+        credits={formToCreditsPayload(creditsForm)}
       />
     </div>
   );

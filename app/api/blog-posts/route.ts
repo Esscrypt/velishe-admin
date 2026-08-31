@@ -8,6 +8,7 @@ import {
   resolvePublishIntent,
 } from "@/lib/blog-publish";
 import { resolveBlogModelId, modelSlugForId } from "@/lib/blog-model-id";
+import { normalizeBlogCredits } from "@/lib/blog-credits";
 import { triggerRevalidation } from "@/lib/revalidate";
 import { config } from "dotenv";
 
@@ -56,6 +57,7 @@ export async function POST(request: NextRequest) {
       published?: boolean;
       scheduledPublishAt?: string | null;
       modelId?: number | null;
+      credits?: unknown;
     };
     const authResult = await verifyAuth(body);
     if (!authResult.authorized) return authResult.response!;
@@ -114,6 +116,7 @@ export async function POST(request: NextRequest) {
 
     const resolvedModelId = await resolveBlogModelId(db, body.modelId);
     const modelId = resolvedModelId === undefined ? null : resolvedModelId;
+    const credits = normalizeBlogCredits(body.credits);
 
     const inserted = await db
       .insert(schema.blogPosts)
@@ -129,6 +132,7 @@ export async function POST(request: NextRequest) {
         publishedAt: publishFields.publishedAt,
         scheduledPublishAt: publishFields.scheduledPublishAt,
         modelId,
+        credits,
         updatedAt: now,
       } as typeof schema.blogPosts.$inferInsert)
       .returning();
