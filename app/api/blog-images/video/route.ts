@@ -83,7 +83,7 @@ export async function POST(request: NextRequest) {
       videoUrl: parsed.canonicalUrl,
       videoProvider: parsed.provider,
     });
-    if (!fields.ok) {
+    if (fields.ok === false) {
       return NextResponse.json({ error: fields.error }, { status: 400 });
     }
 

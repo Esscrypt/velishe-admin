@@ -84,7 +84,7 @@ export async function POST(request: NextRequest) {
         .set({
           data: dataUri,
           ...(alt ? { alt } : {}),
-        })
+        } as Partial<BlogImageInsert>)
         .where(eq(schema.blogImages.id, mediaIdRaw));
 
       if (posts[0].published) {
