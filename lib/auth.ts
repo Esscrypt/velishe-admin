@@ -2,10 +2,9 @@ import bcrypt from "bcryptjs";
 import { config } from "dotenv";
 import { createHash } from "node:crypto";
 
-// Load .env.local first (takes precedence), then .env
-// Force reload to avoid caching issues - override existing values
-const envResult = config({ path: ".env.local", override: true });
-config({ override: true });
+// Load .env first, then .env.local (local overrides shared defaults)
+const envResult = config({ path: ".env" });
+config({ path: ".env.local", override: true });
 
 // Read the hash after loading; strip surrounding quotes from .env values
 let ADMIN_PASSWORD_HASH = process.env.ADMIN_PASSWORD_HASH?.trim().replace(/^["']|["']$/g, "");

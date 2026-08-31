@@ -1,8 +1,8 @@
-import { drizzle } from "drizzle-orm/postgres-js";
+import { drizzle, type PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import * as schema from "./schema";
 
-let dbInstance: ReturnType<typeof drizzle> | null = null;
+let dbInstance: PostgresJsDatabase<typeof schema> | null = null;
 let sqlInstance: ReturnType<typeof postgres> | null = null;
 
 /**

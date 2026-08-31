@@ -563,6 +563,12 @@ export default function AdminPage() {
                 Academy Wishlist
               </Button>
             </Link>
+            <Link href="/blog">
+              <Button variant="outline">Blog</Button>
+            </Link>
+            <Link href="/mailing-list">
+              <Button variant="outline">Mailing list</Button>
+            </Link>
             {models.length > 0 && (
               <Button variant="outline" onClick={handleToggleSelectAll}>
                 {allSelected ? "Clear" : "Select all"}
