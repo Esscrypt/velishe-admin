@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { asc, eq } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
 
 export const NEWSLETTER_COVER_CID = "newsletter-cover@velishe";
@@ -49,22 +49,21 @@ export async function loadCoverMailAttachment(
   if (!db) return null;
 
   const rows = await db
-    .select({ data: schema.blogImages.data })
+    .select({
+      data: schema.blogImages.data,
+      order: schema.blogImages.order,
+    })
     .from(schema.blogImages)
-    .where(
-      and(
-        eq(schema.blogImages.postId, postId),
-        eq(schema.blogImages.order, 0),
-      ),
-    )
-    .limit(1);
+    .where(eq(schema.blogImages.postId, postId))
+    .orderBy(asc(schema.blogImages.order));
 
-  if (rows.length === 0 || !rows[0].data) return null;
+  const withData = rows.find((row) => row.data);
+  if (!withData?.data) return null;
 
-  const content = imageDataToBuffer(rows[0].data);
+  const content = imageDataToBuffer(withData.data);
   if (!content) return null;
 
-  const contentType = contentTypeFromDataUri(rows[0].data);
+  const contentType = contentTypeFromDataUri(withData.data);
   return {
     cid: NEWSLETTER_COVER_CID,
     filename: `cover.${extensionFromContentType(contentType)}`,

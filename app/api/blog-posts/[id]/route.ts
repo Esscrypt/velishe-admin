@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { asc, eq } from "drizzle-orm";
+import { asc, eq, sql } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
 import { verifyAuth } from "@/lib/auth-middleware";
 import { slugifyTitle, uniqueSlug } from "@/lib/blog-slug";
@@ -51,12 +51,23 @@ export async function GET(request: NextRequest, context: RouteContext) {
         id: schema.blogImages.id,
         alt: schema.blogImages.alt,
         order: schema.blogImages.order,
+        kind: schema.blogImages.kind,
+        videoUrl: schema.blogImages.videoUrl,
+        videoProvider: schema.blogImages.videoProvider,
+        hasData: sql<boolean>`(${schema.blogImages.data} is not null)`,
       })
       .from(schema.blogImages)
       .where(eq(schema.blogImages.postId, postId))
       .orderBy(asc(schema.blogImages.order));
 
-    return NextResponse.json({ ...posts[0], images });
+    return NextResponse.json({
+      ...posts[0],
+      images: images.map((image) => ({
+        ...image,
+        kind: (image.kind as "image" | "video") || "image",
+        hasData: Boolean(image.hasData),
+      })),
+    });
   } catch (error) {
     console.error("[GET /api/blog-posts/:id]", error);
     return NextResponse.json(

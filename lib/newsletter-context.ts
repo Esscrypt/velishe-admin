@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
 import { plainTextFromMarkdown } from "@/lib/blog-markdown";
 import type { NewsletterBuildArgs } from "@/lib/newsletter-html";
@@ -47,22 +47,22 @@ export async function loadPostNewsletterContext(
   const userFeUrl = PRODUCTION_SITE_URL;
 
   const cover = await db
-    .select({ id: schema.blogImages.id })
+    .select({
+      id: schema.blogImages.id,
+      data: schema.blogImages.data,
+    })
     .from(schema.blogImages)
-    .where(
-      and(
-        eq(schema.blogImages.postId, postId),
-        eq(schema.blogImages.order, 0),
-      ),
-    )
-    .limit(1);
+    .where(eq(schema.blogImages.postId, postId))
+    .orderBy(schema.blogImages.order);
+
+  const still = cover.find((row) => row.data);
 
   return {
     ok: true,
     data: {
       post: posts[0],
-      coverAbsoluteUrl: cover[0]
-        ? `${userFeUrl}/api/blog-images/${cover[0].id}/`
+      coverAbsoluteUrl: still
+        ? `${userFeUrl}/api/blog-images/${still.id}/`
         : null,
       readUrl: `${userFeUrl}/blog/${posts[0].slug}/`,
       userFeUrl,

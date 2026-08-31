@@ -82,7 +82,10 @@ async function main() {
       await prodDb.insert(schema.blogImages).values({
         id: image.id,
         postId: inserted.id,
+        kind: image.kind ?? "image",
         data: image.data,
+        videoUrl: image.videoUrl ?? null,
+        videoProvider: image.videoProvider ?? null,
         alt: image.alt,
         order: image.order,
         createdAt: image.createdAt,

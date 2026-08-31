@@ -5,6 +5,8 @@ import { and, desc, eq } from "drizzle-orm";
 import { verifyPasswordHash } from "@/lib/auth";
 import { getDb, schema } from "@/lib/db";
 import type { BlogImageInsert } from "@/lib/db/schema";
+import { assertBlogMediaFields } from "@/lib/blog-media";
+import { parseBlogVideoUrl } from "@/lib/blog-video-url";
 import { triggerRevalidation } from "@/lib/revalidate";
 import { config } from "dotenv";
 
@@ -21,15 +23,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Invalid password" }, { status: 401 });
     }
 
-    const file = formData.get("file") as File | null;
     const postIdRaw = formData.get("postId") as string | null;
-    const mediaIdRaw = ((formData.get("mediaId") as string | null) || "").trim();
+    const videoUrlRaw = ((formData.get("videoUrl") as string | null) || "").trim();
     const alt = ((formData.get("alt") as string | null) || "").trim();
     const asCover = formData.get("asCover") === "true";
+    const file = formData.get("file") as File | null;
 
-    if (!file || !postIdRaw) {
+    if (!postIdRaw || !videoUrlRaw) {
       return NextResponse.json(
-        { error: "file and postId are required" },
+        { error: "postId and videoUrl are required" },
         { status: 400 },
       );
     }
@@ -37,6 +39,14 @@ export async function POST(request: NextRequest) {
     const postId = Number.parseInt(postIdRaw, 10);
     if (Number.isNaN(postId)) {
       return NextResponse.json({ error: "Invalid postId" }, { status: 400 });
+    }
+
+    const parsed = parseBlogVideoUrl(videoUrlRaw);
+    if (!parsed) {
+      return NextResponse.json(
+        { error: "Unsupported or invalid video URL" },
+        { status: 400 },
+      );
     }
 
     const db = getDb();
@@ -56,51 +66,35 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Post not found" }, { status: 404 });
     }
 
-    const bytes = await file.arrayBuffer();
-    const processedBuffer = await sharp(Buffer.from(bytes))
-      .rotate()
-      .resize(2400, 3200, { fit: "inside", withoutEnlargement: true })
-      .webp({ quality: 95, effort: 4, smartSubsample: false })
-      .toBuffer();
-    const dataUri = `data:image/webp;base64,${processedBuffer.toString("base64")}`;
-
-    if (mediaIdRaw) {
-      const existing = await db
-        .select()
-        .from(schema.blogImages)
-        .where(eq(schema.blogImages.id, mediaIdRaw))
-        .limit(1);
-      if (existing.length === 0 || existing[0].postId !== postId) {
-        return NextResponse.json({ error: "Media not found" }, { status: 404 });
-      }
-      if (existing[0].kind !== "video") {
-        return NextResponse.json(
-          { error: "mediaId poster upload is only for video rows" },
-          { status: 400 },
-        );
-      }
-      await db
-        .update(schema.blogImages)
-        .set({
-          data: dataUri,
-          ...(alt ? { alt } : {}),
-        })
-        .where(eq(schema.blogImages.id, mediaIdRaw));
-
-      if (posts[0].published) {
-        await triggerRevalidation({ type: "blog", slug: posts[0].slug });
-      }
-      return NextResponse.json({
-        id: mediaIdRaw,
-        order: existing[0].order,
-        kind: "video",
-        hasData: true,
-      });
+    let posterDataUri: string | null = null;
+    if (file) {
+      const bytes = await file.arrayBuffer();
+      const processedBuffer = await sharp(Buffer.from(bytes))
+        .rotate()
+        .resize(2400, 3200, { fit: "inside", withoutEnlargement: true })
+        .webp({ quality: 95, effort: 4, smartSubsample: false })
+        .toBuffer();
+      posterDataUri = `data:image/webp;base64,${processedBuffer.toString("base64")}`;
     }
 
-    const imageId = randomUUID();
+    const fields = assertBlogMediaFields({
+      kind: "video",
+      data: posterDataUri,
+      videoUrl: parsed.canonicalUrl,
+      videoProvider: parsed.provider,
+    });
+    if (!fields.ok) {
+      return NextResponse.json({ error: fields.error }, { status: 400 });
+    }
 
-    if (asCover) {
+    const existingCount = await db
+      .select({ order: schema.blogImages.order })
+      .from(schema.blogImages)
+      .where(eq(schema.blogImages.postId, postId));
+
+    const useAsCover = asCover || existingCount.length === 0;
+    let order = 0;
+    if (useAsCover) {
       const existingCover = await db
         .select()
         .from(schema.blogImages)
@@ -116,16 +110,7 @@ export async function POST(request: NextRequest) {
           .delete(schema.blogImages)
           .where(eq(schema.blogImages.id, existingCover[0].id));
       }
-      await db.insert(schema.blogImages).values({
-        id: imageId,
-        postId,
-        kind: "image",
-        data: dataUri,
-        videoUrl: null,
-        videoProvider: null,
-        alt,
-        order: 0,
-      } as BlogImageInsert);
+      order = 0;
     } else {
       const maxOrderRows = await db
         .select({ order: schema.blogImages.order })
@@ -133,33 +118,38 @@ export async function POST(request: NextRequest) {
         .where(eq(schema.blogImages.postId, postId))
         .orderBy(desc(schema.blogImages.order))
         .limit(1);
-      const nextOrder = Math.max(1, (maxOrderRows[0]?.order ?? 0) + 1);
-      await db.insert(schema.blogImages).values({
-        id: imageId,
-        postId,
-        kind: "image",
-        data: dataUri,
-        videoUrl: null,
-        videoProvider: null,
-        alt,
-        order: nextOrder,
-      } as BlogImageInsert);
+      order = Math.max(1, (maxOrderRows[0]?.order ?? 0) + 1);
     }
+
+    const mediaId = randomUUID();
+    await db.insert(schema.blogImages).values({
+      id: mediaId,
+      postId,
+      kind: "video",
+      data: posterDataUri,
+      videoUrl: parsed.canonicalUrl,
+      videoProvider: parsed.provider,
+      alt,
+      order,
+    } as BlogImageInsert);
 
     if (posts[0].published) {
       await triggerRevalidation({ type: "blog", slug: posts[0].slug });
     }
 
     return NextResponse.json({
-      id: imageId,
-      order: asCover ? 0 : undefined,
-      kind: "image",
-      hasData: true,
+      id: mediaId,
+      order,
+      kind: "video",
+      videoUrl: parsed.canonicalUrl,
+      videoProvider: parsed.provider,
+      alt,
+      hasData: Boolean(posterDataUri),
     });
   } catch (error) {
-    console.error("[POST /api/blog-images/upload]", error);
+    console.error("[POST /api/blog-images/video]", error);
     return NextResponse.json(
-      { error: "Failed to upload blog image" },
+      { error: "Failed to add blog video" },
       { status: 500 },
     );
   }

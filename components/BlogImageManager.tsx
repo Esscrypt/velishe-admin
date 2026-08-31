@@ -22,8 +22,17 @@ import { GripVertical, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import type { BlogVideoProvider } from "@/lib/blog-video-url";
 
-export type BlogImageMeta = { id: string; alt: string; order: number };
+export type BlogImageMeta = {
+  id: string;
+  alt: string;
+  order: number;
+  kind: "image" | "video";
+  videoUrl: string | null;
+  videoProvider: BlogVideoProvider | null;
+  hasData: boolean;
+};
 
 const MAX_UPLOAD_BYTES = 4 * 1024 * 1024;
 
@@ -111,14 +120,23 @@ function SortableBlogImage({
       >
         <GripVertical className="w-4 h-4 text-white" />
       </div>
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
-        src={`/api/blog-images/${image.id}`}
-        alt={image.alt || ""}
-        className="w-full h-32 object-cover rounded"
-      />
+      {image.hasData ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={`/api/blog-images/${image.id}`}
+          alt={image.alt || ""}
+          className="w-full h-32 object-cover rounded"
+        />
+      ) : (
+        <div className="flex h-32 w-full items-center justify-center rounded bg-gray-200 text-xs text-gray-600">
+          {image.kind === "video"
+            ? `Video (${image.videoProvider || "url"})`
+            : "No preview"}
+        </div>
+      )}
       <div className="absolute bottom-1 left-1 bg-black/70 text-white text-[10px] px-1 rounded">
         {image.order === 0 ? "Cover" : `Gallery #${image.order}`}
+        {image.kind === "video" ? " · Video" : ""}
       </div>
       <Button
         type="button"
@@ -148,6 +166,9 @@ export default function BlogImageManager({
 }: BlogImageManagerProps) {
   const [uploading, setUploading] = useState(false);
   const [reordering, setReordering] = useState(false);
+  const [videoUrl, setVideoUrl] = useState("");
+  const [videoAlt, setVideoAlt] = useState("");
+  const [addingVideo, setAddingVideo] = useState(false);
 
   const sortedImages = useMemo(
     () => [...images].sort((a, b) => a.order - b.order),
@@ -274,12 +295,45 @@ export default function BlogImageManager({
     [onImagesChange, passwordHash],
   );
 
+  const handleAddVideo = useCallback(async () => {
+    const trimmed = videoUrl.trim();
+    if (!trimmed) return;
+    setAddingVideo(true);
+    try {
+      const formData = new FormData();
+      formData.set("passwordHash", passwordHash);
+      formData.set("postId", String(postId));
+      formData.set("videoUrl", trimmed);
+      formData.set("alt", videoAlt.trim());
+      formData.set(
+        "asCover",
+        sortedImages.some((image) => image.order === 0) ? "false" : "true",
+      );
+      const response = await fetch("/api/blog-images/video", {
+        method: "POST",
+        body: formData,
+      });
+      if (!response.ok) {
+        const err = (await response.json().catch(() => null)) as {
+          error?: string;
+        } | null;
+        alert(err?.error || "Failed to add video");
+        return;
+      }
+      setVideoUrl("");
+      setVideoAlt("");
+      await onImagesChange();
+    } finally {
+      setAddingVideo(false);
+    }
+  }, [onImagesChange, passwordHash, postId, sortedImages, videoAlt, videoUrl]);
+
   return (
     <div className="space-y-3 border-t pt-4">
-      <Label>Images</Label>
+      <Label>Media</Label>
       <p className="text-sm text-muted-foreground">
-        Drag and drop or click to upload. First image is the cover; drag to
-        reorder gallery.
+        Upload images or paste a YouTube / Vimeo / Instagram URL. First item is
+        the cover; drag to reorder.
       </p>
       <div
         onDrop={handleDrop}
@@ -303,7 +357,7 @@ export default function BlogImageManager({
             : "Drag and drop images here, or click to select"}
         </p>
         <p className="text-xs text-gray-500">
-          First image becomes the cover. Drag handles to reorder.
+          First media becomes the cover. Drag handles to reorder.
         </p>
         <Input
           id="blog-image-upload"
@@ -314,6 +368,33 @@ export default function BlogImageManager({
           disabled={uploading || reordering}
           className="hidden"
         />
+      </div>
+
+      <div className="space-y-2 rounded-lg border p-3">
+        <Label htmlFor="blog-video-url">Add video URL</Label>
+        <Input
+          id="blog-video-url"
+          type="url"
+          placeholder="https://www.youtube.com/watch?v=… or Instagram / Vimeo"
+          value={videoUrl}
+          onChange={(event) => setVideoUrl(event.target.value)}
+          disabled={addingVideo || reordering}
+        />
+        <Input
+          type="text"
+          placeholder="Optional alt / title"
+          value={videoAlt}
+          onChange={(event) => setVideoAlt(event.target.value)}
+          disabled={addingVideo || reordering}
+        />
+        <Button
+          type="button"
+          variant="secondary"
+          disabled={addingVideo || !videoUrl.trim()}
+          onClick={() => void handleAddVideo()}
+        >
+          {addingVideo ? "Adding…" : "Add video"}
+        </Button>
       </div>
 
       {sortedImages.length > 0 ? (

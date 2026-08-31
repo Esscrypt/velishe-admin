@@ -71,6 +71,13 @@
       "when": 1788113100000,
       "tag": "0009_scheduled_publish",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1788114200000,
+      "tag": "0010_blog_media_video",
+      "breakpoints": true
     }
   ]
 }

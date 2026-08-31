@@ -89,7 +89,10 @@ export const blogImages = pgTable("blog_images", {
   postId: integer("post_id")
     .notNull()
     .references(() => blogPosts.id, { onDelete: "cascade" }),
-  data: text("data").notNull(),
+  kind: text("kind").notNull().default("image"), // 'image' | 'video'
+  data: text("data"), // WebP data URI for images / optional video poster
+  videoUrl: text("video_url"),
+  videoProvider: text("video_provider"), // youtube | vimeo | instagram
   alt: text("alt").notNull().default(""),
   order: integer("order").notNull().default(0),
   createdAt: timestamp("created_at").notNull().defaultNow(),
