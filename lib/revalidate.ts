@@ -1,3 +1,5 @@
+import { getUserFeUrl } from "@/lib/user-fe-url";
+
 export type RevalidateOptions = {
   slug?: string;
   type?: "blog" | "models";
@@ -12,10 +14,10 @@ export async function triggerRevalidation(
       : slugOrOptions ?? { type: "models" };
 
   const secret = process.env.REVALIDATION_SECRET;
-  const userFEUrl = process.env.USER_FE_URL;
+  const userFEUrl = getUserFeUrl();
   if (!secret || !userFEUrl) {
     console.error(
-      "[revalidate] Skipping: missing USER_FE_URL or REVALIDATION_SECRET in env",
+      "[revalidate] Skipping: missing public site URL or REVALIDATION_SECRET in env",
     );
     return;
   }

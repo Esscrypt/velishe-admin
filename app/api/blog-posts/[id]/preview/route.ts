@@ -10,6 +10,7 @@ import {
   resolveNewsletterCoverImageSrc,
 } from "@/lib/newsletter-cover";
 import { createSmtpTransporter, isSmtpConfigured } from "@/lib/smtp";
+import { newsletterContextErrorMessage } from "@/lib/user-fe-url";
 
 export const maxDuration = 60;
 export const runtime = "nodejs";
@@ -25,6 +26,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
     const body = (await request.json()) as {
       passwordHash?: string;
       email?: string;
+      userFeUrl?: string;
     };
     const authResult = await verifyAuth(body);
     if (!authResult.authorized) return authResult.response!;
@@ -43,13 +45,17 @@ export async function POST(request: NextRequest, context: RouteContext) {
       return NextResponse.json({ error: "Invalid id" }, { status: 400 });
     }
 
-    const contextData = await loadPostNewsletterContext(postId);
-    if (!contextData) {
+    const contextResult = await loadPostNewsletterContext(
+      postId,
+      body.userFeUrl,
+    );
+    if (!contextResult.ok) {
       return NextResponse.json(
-        { error: "Post not found or USER_FE_URL not configured" },
-        { status: 404 },
+        { error: newsletterContextErrorMessage(contextResult.reason) },
+        { status: contextResult.reason === "post_not_found" ? 404 : 503 },
       );
     }
+    const contextData = contextResult.data;
 
     const privacyUrl = `${contextData.userFeUrl}/privacy/`;
     const { coverImageSrc, attachment } = await resolveNewsletterCoverImageSrc(

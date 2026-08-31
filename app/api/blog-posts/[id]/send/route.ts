@@ -13,6 +13,7 @@ import {
 } from "@/lib/newsletter-cover";
 import { assertCanSendNewsletter } from "@/lib/newsletter-send";
 import { createSmtpTransporter, isSmtpConfigured } from "@/lib/smtp";
+import { newsletterContextErrorMessage } from "@/lib/user-fe-url";
 import { config } from "dotenv";
 
 config();
@@ -24,7 +25,10 @@ type RouteContext = { params: Promise<{ id: string }> };
 
 export async function POST(request: NextRequest, context: RouteContext) {
   try {
-    const body = (await request.json()) as { passwordHash?: string };
+    const body = (await request.json()) as {
+      passwordHash?: string;
+      userFeUrl?: string;
+    };
     const authResult = await verifyAuth(body);
     if (!authResult.authorized) return authResult.response!;
 
@@ -79,13 +83,17 @@ export async function POST(request: NextRequest, context: RouteContext) {
       );
     }
 
-    const contextData = await loadPostNewsletterContext(postId);
-    if (!contextData) {
+    const contextResult = await loadPostNewsletterContext(
+      postId,
+      body.userFeUrl,
+    );
+    if (!contextResult.ok) {
       return NextResponse.json(
-        { error: "USER_FE_URL is not configured" },
-        { status: 500 },
+        { error: newsletterContextErrorMessage(contextResult.reason) },
+        { status: contextResult.reason === "post_not_found" ? 404 : 503 },
       );
     }
+    const contextData = contextResult.data;
 
     if (!isSmtpConfigured()) {
       return NextResponse.json(

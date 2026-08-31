@@ -2,6 +2,7 @@ import { and, eq } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
 import { plainTextFromMarkdown } from "@/lib/blog-markdown";
 import type { NewsletterBuildArgs } from "@/lib/newsletter-html";
+import { getUserFeUrl, type NewsletterContextFailure } from "@/lib/user-fe-url";
 
 type PostRow = {
   title: string;
@@ -10,14 +11,22 @@ type PostRow = {
   slug: string;
 };
 
-export async function loadPostNewsletterContext(postId: number): Promise<{
+export type PostNewsletterContext = {
   post: PostRow;
   coverAbsoluteUrl: string | null;
   readUrl: string;
   userFeUrl: string;
-} | null> {
+};
+
+export async function loadPostNewsletterContext(
+  postId: number,
+  userFeUrlOverride?: string | null,
+): Promise<
+  | { ok: true; data: PostNewsletterContext }
+  | ({ ok: false } & NewsletterContextFailure)
+> {
   const db = getDb();
-  if (!db) return null;
+  if (!db) return { ok: false, reason: "database" };
 
   const posts = await db
     .select({
@@ -30,10 +39,10 @@ export async function loadPostNewsletterContext(postId: number): Promise<{
     .where(eq(schema.blogPosts.id, postId))
     .limit(1);
 
-  if (posts.length === 0) return null;
+  if (posts.length === 0) return { ok: false, reason: "post_not_found" };
 
-  const userFeUrl = (process.env.USER_FE_URL || "").replace(/\/$/, "");
-  if (!userFeUrl) return null;
+  const userFeUrl = getUserFeUrl(userFeUrlOverride);
+  if (!userFeUrl) return { ok: false, reason: "user_fe_url" };
 
   const cover = await db
     .select({ id: schema.blogImages.id })
@@ -47,22 +56,20 @@ export async function loadPostNewsletterContext(postId: number): Promise<{
     .limit(1);
 
   return {
-    post: posts[0],
-    coverAbsoluteUrl: cover[0]
-      ? `${userFeUrl}/api/blog-images/${cover[0].id}/`
-      : null,
-    readUrl: `${userFeUrl}/blog/${posts[0].slug}/`,
-    userFeUrl,
+    ok: true,
+    data: {
+      post: posts[0],
+      coverAbsoluteUrl: cover[0]
+        ? `${userFeUrl}/api/blog-images/${cover[0].id}/`
+        : null,
+      readUrl: `${userFeUrl}/blog/${posts[0].slug}/`,
+      userFeUrl,
+    },
   };
 }
 
 export function buildNewsletterArgsFromPost(
-  context: {
-    post: PostRow;
-    coverAbsoluteUrl: string | null;
-    readUrl: string;
-    userFeUrl: string;
-  },
+  context: PostNewsletterContext,
   options: {
     unsubscribeUrl: string;
     isPreview?: boolean;

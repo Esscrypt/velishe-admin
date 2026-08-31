@@ -50,6 +50,12 @@ export default function BlogAdminPage() {
   const [previewEmail, setPreviewEmail] = useState(
     () => process.env.NEXT_PUBLIC_NEWSLETTER_PREVIEW_EMAIL ?? "",
   );
+  const [publicSiteUrl, setPublicSiteUrl] = useState(
+    () =>
+      process.env.NEXT_PUBLIC_USER_FE_URL ??
+      process.env.NEXT_PUBLIC_APP_URL ??
+      "",
+  );
   const [previewing, setPreviewing] = useState(false);
   const [images, setImages] = useState<BlogImageMeta[]>([]);
   const [passwordHash, setPasswordHash] = useState("");
@@ -210,6 +216,10 @@ export default function BlogAdminPage() {
       alert("Enter a preview email address");
       return;
     }
+    if (!publicSiteUrl.trim()) {
+      alert("Enter the public site URL for newsletter links");
+      return;
+    }
     setPreviewing(true);
     try {
       const response = await fetch(`/api/blog-posts/${editing.id}/preview`, {
@@ -218,6 +228,7 @@ export default function BlogAdminPage() {
         body: JSON.stringify({
           passwordHash,
           email: previewEmail.trim(),
+          userFeUrl: publicSiteUrl.trim(),
         }),
       });
       const data = (await response.json().catch(() => null)) as {
@@ -248,7 +259,10 @@ export default function BlogAdminPage() {
       const response = await fetch(`/api/blog-posts/${editing.id}/send`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ passwordHash }),
+        body: JSON.stringify({
+          passwordHash,
+          userFeUrl: publicSiteUrl.trim() || undefined,
+        }),
       });
       const data = (await response.json().catch(() => null)) as {
         sent?: number;
@@ -344,6 +358,17 @@ export default function BlogAdminPage() {
                   </Button>
                 ) : null}
                 <div className="space-y-2 pt-2">
+                  <Label htmlFor="public-site-url">Public site URL</Label>
+                  <Input
+                    id="public-site-url"
+                    type="url"
+                    value={publicSiteUrl}
+                    onChange={(e) => setPublicSiteUrl(e.target.value)}
+                    placeholder="https://www.velishemodelmanagement.com"
+                  />
+                  <p className="text-xs text-gray-500">
+                    Used for “Read on the site”, cover images, and unsubscribe links in emails.
+                  </p>
                   <Label htmlFor="preview-email">Preview email</Label>
                   <Input
                     id="preview-email"
