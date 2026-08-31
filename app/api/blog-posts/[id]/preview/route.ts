@@ -26,7 +26,6 @@ export async function POST(request: NextRequest, context: RouteContext) {
     const body = (await request.json()) as {
       passwordHash?: string;
       email?: string;
-      userFeUrl?: string;
     };
     const authResult = await verifyAuth(body);
     if (!authResult.authorized) return authResult.response!;
@@ -45,10 +44,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
       return NextResponse.json({ error: "Invalid id" }, { status: 400 });
     }
 
-    const contextResult = await loadPostNewsletterContext(
-      postId,
-      body.userFeUrl,
-    );
+    const contextResult = await loadPostNewsletterContext(postId);
     if (contextResult.ok === false) {
       return NextResponse.json(
         { error: newsletterContextErrorMessage(contextResult.reason) },

@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, Plus, Trash2 } from "lucide-react";
+import BlogPostPreview from "@/components/BlogPostPreview";
 import BlogMarkdownEditor from "@/components/BlogMarkdownEditor";
 import BlogImageManager, {
   type BlogImageMeta,
@@ -50,12 +51,7 @@ export default function BlogAdminPage() {
   const [previewEmail, setPreviewEmail] = useState(
     () => process.env.NEXT_PUBLIC_NEWSLETTER_PREVIEW_EMAIL ?? "",
   );
-  const [publicSiteUrl, setPublicSiteUrl] = useState(
-    () =>
-      process.env.NEXT_PUBLIC_USER_FE_URL ??
-      process.env.NEXT_PUBLIC_APP_URL ??
-      "",
-  );
+  const [postPreviewOpen, setPostPreviewOpen] = useState(false);
   const [previewing, setPreviewing] = useState(false);
   const [images, setImages] = useState<BlogImageMeta[]>([]);
   const [passwordHash, setPasswordHash] = useState("");
@@ -216,10 +212,6 @@ export default function BlogAdminPage() {
       alert("Enter a preview email address");
       return;
     }
-    if (!publicSiteUrl.trim()) {
-      alert("Enter the public site URL for newsletter links");
-      return;
-    }
     setPreviewing(true);
     try {
       const response = await fetch(`/api/blog-posts/${editing.id}/preview`, {
@@ -228,7 +220,6 @@ export default function BlogAdminPage() {
         body: JSON.stringify({
           passwordHash,
           email: previewEmail.trim(),
-          userFeUrl: publicSiteUrl.trim(),
         }),
       });
       const data = (await response.json().catch(() => null)) as {
@@ -261,7 +252,6 @@ export default function BlogAdminPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           passwordHash,
-          userFeUrl: publicSiteUrl.trim() || undefined,
         }),
       });
       const data = (await response.json().catch(() => null)) as {
@@ -330,6 +320,16 @@ export default function BlogAdminPage() {
                 <BlogMarkdownEditor value={body} onChange={setBody} />
               </div>
             </div>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setPostPreviewOpen(true)}
+                disabled={!title.trim() || !body.trim()}
+              >
+                Preview post
+              </Button>
+            </div>
             <label className="flex items-center gap-2 text-sm">
               <input
                 type="checkbox"
@@ -358,17 +358,6 @@ export default function BlogAdminPage() {
                   </Button>
                 ) : null}
                 <div className="space-y-2 pt-2">
-                  <Label htmlFor="public-site-url">Public site URL</Label>
-                  <Input
-                    id="public-site-url"
-                    type="url"
-                    value={publicSiteUrl}
-                    onChange={(e) => setPublicSiteUrl(e.target.value)}
-                    placeholder="https://www.velishemodelmanagement.com"
-                  />
-                  <p className="text-xs text-gray-500">
-                    Used for “Read on the site”, cover images, and unsubscribe links in emails.
-                  </p>
                   <Label htmlFor="preview-email">Preview email</Label>
                   <Input
                     id="preview-email"
@@ -382,7 +371,7 @@ export default function BlogAdminPage() {
                     disabled={previewing}
                     onClick={() => void handlePreview()}
                   >
-                    {previewing ? "Sending preview…" : "Send preview"}
+                    {previewing ? "Sending preview…" : "Send email preview"}
                   </Button>
                 </div>
                 <BlogImageManager
@@ -464,6 +453,17 @@ export default function BlogAdminPage() {
         }}
         title={passwordDialogTitle}
         description={passwordDialogDescription}
+      />
+
+      <BlogPostPreview
+        open={postPreviewOpen}
+        onOpenChange={setPostPreviewOpen}
+        title={title}
+        teaser={teaser}
+        body={body}
+        published={published}
+        slug={editing?.slug}
+        images={images}
       />
     </div>
   );

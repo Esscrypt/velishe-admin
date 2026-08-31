@@ -4,6 +4,7 @@ import {
   getUserFeUrl,
   isAllowedUserFeUrl,
   normalizeSiteUrl,
+  PRODUCTION_SITE_URL,
 } from "./user-fe-url";
 
 test("normalizeSiteUrl strips trailing slash", () => {
@@ -22,4 +23,8 @@ test("getUserFeUrl prefers override", () => {
   expect(
     getUserFeUrl("https://velishe-git-feat-blog-and-mailing-list.vercel.app"),
   ).toBe("https://velishe-git-feat-blog-and-mailing-list.vercel.app");
+});
+
+test("PRODUCTION_SITE_URL is the canonical live site", () => {
+  expect(PRODUCTION_SITE_URL).toBe("https://www.velishemodelmanagement.com");
 });

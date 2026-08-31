@@ -2,7 +2,10 @@ import { and, eq } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
 import { plainTextFromMarkdown } from "@/lib/blog-markdown";
 import type { NewsletterBuildArgs } from "@/lib/newsletter-html";
-import { getUserFeUrl, type NewsletterContextFailureReason } from "@/lib/user-fe-url";
+import {
+  PRODUCTION_SITE_URL,
+  type NewsletterContextFailureReason,
+} from "@/lib/user-fe-url";
 
 type PostRow = {
   title: string;
@@ -24,7 +27,6 @@ export type LoadPostNewsletterContextResult =
 
 export async function loadPostNewsletterContext(
   postId: number,
-  userFeUrlOverride?: string | null,
 ): Promise<LoadPostNewsletterContextResult> {
   const db = getDb();
   if (!db) return { ok: false, reason: "database" };
@@ -42,8 +44,7 @@ export async function loadPostNewsletterContext(
 
   if (posts.length === 0) return { ok: false, reason: "post_not_found" };
 
-  const userFeUrl = getUserFeUrl(userFeUrlOverride);
-  if (!userFeUrl) return { ok: false, reason: "user_fe_url" };
+  const userFeUrl = PRODUCTION_SITE_URL;
 
   const cover = await db
     .select({ id: schema.blogImages.id })

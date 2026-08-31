@@ -1,4 +1,4 @@
-const PRODUCTION_SITE_URL = "https://www.velishemodelmanagement.com";
+export const PRODUCTION_SITE_URL = "https://www.velishemodelmanagement.com";
 
 export function normalizeSiteUrl(url: string): string {
   return url.trim().replace(/\/$/, "");
@@ -65,6 +65,6 @@ export function newsletterContextErrorMessage(
     case "post_not_found":
       return "Post not found";
     case "user_fe_url":
-      return "Public site URL is not configured. Set USER_FE_URL on the server or NEXT_PUBLIC_USER_FE_URL / Public site URL in the admin UI.";
+      return "Public site URL is not configured.";
   }
 }
