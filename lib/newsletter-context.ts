@@ -2,7 +2,7 @@ import { and, eq } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
 import { plainTextFromMarkdown } from "@/lib/blog-markdown";
 import type { NewsletterBuildArgs } from "@/lib/newsletter-html";
-import { getUserFeUrl, type NewsletterContextFailure } from "@/lib/user-fe-url";
+import { getUserFeUrl, type NewsletterContextFailureReason } from "@/lib/user-fe-url";
 
 type PostRow = {
   title: string;
@@ -18,13 +18,14 @@ export type PostNewsletterContext = {
   userFeUrl: string;
 };
 
+export type LoadPostNewsletterContextResult =
+  | { ok: true; data: PostNewsletterContext }
+  | { ok: false; reason: NewsletterContextFailureReason };
+
 export async function loadPostNewsletterContext(
   postId: number,
   userFeUrlOverride?: string | null,
-): Promise<
-  | { ok: true; data: PostNewsletterContext }
-  | ({ ok: false } & NewsletterContextFailure)
-> {
+): Promise<LoadPostNewsletterContextResult> {
   const db = getDb();
   if (!db) return { ok: false, reason: "database" };
 

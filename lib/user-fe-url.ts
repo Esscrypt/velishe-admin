@@ -51,13 +51,13 @@ export function getUserFeUrlOrProductionFallback(
   return getUserFeUrl(override) ?? PRODUCTION_SITE_URL;
 }
 
-export type NewsletterContextFailure =
-  | { ok: false; reason: "database" }
-  | { ok: false; reason: "post_not_found" }
-  | { ok: false; reason: "user_fe_url" };
+export type NewsletterContextFailureReason =
+  | "database"
+  | "post_not_found"
+  | "user_fe_url";
 
 export function newsletterContextErrorMessage(
-  reason: NewsletterContextFailure["reason"],
+  reason: NewsletterContextFailureReason,
 ): string {
   switch (reason) {
     case "database":

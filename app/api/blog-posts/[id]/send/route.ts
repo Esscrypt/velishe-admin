@@ -87,7 +87,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
       postId,
       body.userFeUrl,
     );
-    if (!contextResult.ok) {
+    if (contextResult.ok === false) {
       return NextResponse.json(
         { error: newsletterContextErrorMessage(contextResult.reason) },
         { status: contextResult.reason === "post_not_found" ? 404 : 503 },

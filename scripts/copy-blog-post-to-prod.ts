@@ -75,7 +75,7 @@ async function main() {
         newsletterSentAt: post.newsletterSentAt,
         createdAt: post.createdAt,
         updatedAt: post.updatedAt,
-      })
+      } as typeof schema.blogPosts.$inferInsert)
       .returning({ id: schema.blogPosts.id });
 
     for (const image of images) {
@@ -86,7 +86,7 @@ async function main() {
         alt: image.alt,
         order: image.order,
         createdAt: image.createdAt,
-      });
+      } as typeof schema.blogImages.$inferInsert);
     }
 
     console.log(
