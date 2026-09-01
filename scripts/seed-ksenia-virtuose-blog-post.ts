@@ -89,7 +89,7 @@ async function main() {
       credits: CREDITS,
       createdAt: now,
       updatedAt: now,
-    })
+    } as typeof schema.blogPosts.$inferInsert)
     .returning({ id: schema.blogPosts.id });
 
   await db.insert(schema.blogImages).values({
@@ -101,7 +101,7 @@ async function main() {
     videoProvider: parsed.provider,
     alt: `${TITLE} — Velishe Journal`,
     order: 0,
-  });
+  } as typeof schema.blogImages.$inferInsert);
 
   await triggerRevalidation({ slug: SLUG, type: "blog" });
 
