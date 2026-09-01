@@ -44,6 +44,7 @@ const CREDITS = {
 
 async function main() {
   const allowProd = process.argv.includes("--allow-prod");
+  const shouldUpdate = process.argv.includes("--update");
   const databaseUrl = process.env.DATABASE_URL;
   if (!databaseUrl) throw new Error("DATABASE_URL is not set");
   const prodHost = new URL(databaseUrl).hostname;
@@ -60,7 +61,7 @@ async function main() {
     .from(schema.blogPosts)
     .where(eq(schema.blogPosts.slug, SLUG))
     .limit(1);
-  if (existing.length > 0) {
+  if (existing.length > 0 && !shouldUpdate) {
     console.log(JSON.stringify({ status: "already_exists", slug: SLUG, id: existing[0].id }));
     return;
   }
@@ -76,6 +77,33 @@ async function main() {
   if (!parsed) throw new Error("Invalid Instagram URL");
 
   const now = new Date();
+
+  if (existing.length > 0 && shouldUpdate) {
+    await db
+      .update(schema.blogPosts)
+      .set({
+        title: TITLE,
+        teaser: TEASER,
+        body: BODY,
+        modelId: model.id,
+        credits: CREDITS,
+        updatedAt: now,
+      } as Partial<typeof schema.blogPosts.$inferInsert>)
+      .where(eq(schema.blogPosts.id, existing[0].id));
+
+    await triggerRevalidation({ slug: SLUG, type: "blog" });
+
+    console.log(
+      JSON.stringify({
+        status: "updated",
+        slug: SLUG,
+        postId: existing[0].id,
+        url: `https://www.velishemodelmanagement.com/blog/${SLUG}/`,
+      }),
+    );
+    return;
+  }
+
   const [post] = await db
     .insert(schema.blogPosts)
     .values({
