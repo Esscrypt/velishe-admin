@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/dialog";
 import type { BlogImageMeta } from "@/components/BlogImageManager";
 import { normalizeBlogCredits } from "@/lib/blog-credits";
+import BlogInstagramEmbed from "@/components/BlogInstagramEmbed";
 
 const BLOG_PROSE_CLASS =
   "blog-prose text-base leading-7 text-gray-900 space-y-4 [&_h2]:font-serif [&_h2]:text-2xl [&_h2]:font-bold [&_h2]:mt-8 [&_h3]:font-serif [&_h3]:text-xl [&_h3]:font-bold [&_h3]:mt-6 [&_a]:underline [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_blockquote]:border-l-2 [&_blockquote]:border-black [&_blockquote]:pl-4 [&_blockquote]:italic [&_blockquote]:text-gray-700";
@@ -95,29 +96,8 @@ function PreviewMedia({
 
     if (parsed?.provider === "instagram") {
       return (
-        <div className="mx-auto w-full max-w-[540px] bg-black">
-          <div className="overflow-hidden">
-            <iframe
-              src={parsed.embedUrl}
-              title={title}
-              className="block w-full border-0"
-              style={{ height: 760, maxWidth: "100%" }}
-              allow="autoplay; clipboard-write; encrypted-media; picture-in-picture; web-share; fullscreen"
-              allowFullScreen
-              loading="lazy"
-              referrerPolicy="strict-origin-when-cross-origin"
-            />
-          </div>
-          <p className="bg-white px-2 py-2 text-center text-sm">
-            <a
-              href={parsed.canonicalUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="underline hover:text-gray-800"
-            >
-              Open on Instagram
-            </a>
-          </p>
+        <div className="w-full overflow-hidden bg-white">
+          <BlogInstagramEmbed permalink={parsed.canonicalUrl} title={title} />
         </div>
       );
     }
