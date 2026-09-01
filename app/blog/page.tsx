@@ -172,7 +172,7 @@ export default function BlogAdminPage() {
 
   const fetchModelOptions = async () => {
     try {
-      const response = await fetch("/api/models");
+      const response = await fetch("/api/models?limit=10000");
       if (!response.ok) return;
       const data = (await response.json()) as Array<{
         id: string;
