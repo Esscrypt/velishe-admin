@@ -42,14 +42,30 @@ function PreviewBlock({
   block,
   images,
   titleFallback,
+  renderMedia,
 }: {
   block: BlogBlock;
   images: BlogImageMeta[];
   titleFallback: string;
+  renderMedia: boolean;
 }) {
   if (block.type === "media") {
+    if (!renderMedia) {
+      return (
+        <div className="mb-8 flex min-h-[120px] items-center justify-center rounded border border-dashed border-gray-300 bg-gray-50 text-sm text-gray-500">
+          Video / image embed
+        </div>
+      );
+    }
     const media = images.find((image) => image.id === block.mediaId);
-    if (!media) return null;
+    if (!media) {
+      return (
+        <div className="mb-8 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+          Media block references an upload that is not on this post yet. Save and
+          pick media from the list.
+        </div>
+      );
+    }
     return (
       <figure className={`overflow-hidden bg-gray-100 ${mediaLayoutClass(block.layout)}`}>
         <PreviewMedia media={media} titleFallback={titleFallback} />
@@ -296,16 +312,15 @@ export default function BlogPostPreview({
             <div
               className={`${BLOG_PROSE_CLASS} clearfix after:content-[''] after:table after:clear-both`}
             >
-              {open
-                ? blockDocument.blocks.map((block) => (
-                    <PreviewBlock
-                      key={block.id}
-                      block={block}
-                      images={sortedImages}
-                      titleFallback={titleFallback}
-                    />
-                  ))
-                : null}
+              {blockDocument.blocks.map((block) => (
+                <PreviewBlock
+                  key={block.id}
+                  block={block}
+                  images={sortedImages}
+                  titleFallback={titleFallback}
+                  renderMedia={open}
+                />
+              ))}
             </div>
           ) : (
             <div
