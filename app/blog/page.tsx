@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, Plus, Trash2 } from "lucide-react";
 import BlogPostPreview from "@/components/BlogPostPreview";
-import BlogMarkdownEditor from "@/components/BlogMarkdownEditor";
+import BlogBlockEditor from "@/components/BlogBlockEditor";
 import BlogImageManager, {
   type BlogImageMeta,
 } from "@/components/BlogImageManager";
@@ -20,6 +20,12 @@ import {
   postStatusLabel,
 } from "@/lib/blog-publish";
 import type { BlogCredits } from "@/lib/blog-credits";
+import {
+  bodyHasContent,
+  createEmptyParagraphBlock,
+  ensureBlocksBody,
+  serializeBlocksDocument,
+} from "@/lib/blog-blocks";
 
 type PublishMode = "draft" | "now" | "scheduled";
 
@@ -255,7 +261,7 @@ export default function BlogAdminPage() {
     setCreating(false);
     setTitle("");
     setTeaser("");
-    setBody("");
+    setBody(serializeBlocksDocument([createEmptyParagraphBlock()]));
     setPublishMode("draft");
     setScheduledAtLocal("");
     setImages([]);
@@ -278,7 +284,7 @@ export default function BlogAdminPage() {
     setEditing(full);
     setTitle(full.title);
     setTeaser(full.teaser ?? "");
-    setBody(full.body);
+    setBody(ensureBlocksBody(full.body));
     setPublishMode(derivePublishMode(full));
     setScheduledAtLocal(toDatetimeLocalValue(full.scheduledPublishAt));
     setImages(full.images ?? []);
@@ -298,7 +304,7 @@ export default function BlogAdminPage() {
   };
 
   const handleSave = async () => {
-    if (!title.trim() || !body.trim()) {
+    if (!title.trim() || !bodyHasContent(body)) {
       alert("Title and body are required");
       return;
     }
@@ -625,10 +631,20 @@ export default function BlogAdminPage() {
                 />
               </div>
             </fieldset>
+            {editing ? (
+              <div className="space-y-3 border-t pt-4">
+                <BlogImageManager
+                  postId={editing.id}
+                  passwordHash={passwordHash}
+                  images={images}
+                  onImagesChange={reloadImages}
+                />
+              </div>
+            ) : null}
             <div>
-              <Label htmlFor="body">Body (Markdown)</Label>
+              <Label htmlFor="body">Body</Label>
               <div className="mt-1">
-                <BlogMarkdownEditor value={body} onChange={setBody} />
+                <BlogBlockEditor value={body} onChange={setBody} images={images} />
               </div>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -636,7 +652,7 @@ export default function BlogAdminPage() {
                 type="button"
                 variant="outline"
                 onClick={() => setPostPreviewOpen(true)}
-                disabled={!title.trim() || !body.trim()}
+                disabled={!title.trim() || !bodyHasContent(body)}
               >
                 Preview post
               </Button>
@@ -722,12 +738,6 @@ export default function BlogAdminPage() {
                     {previewing ? "Sending preview…" : "Send email preview"}
                   </Button>
                 </div>
-                <BlogImageManager
-                  postId={editing.id}
-                  passwordHash={passwordHash}
-                  images={images}
-                  onImagesChange={reloadImages}
-                />
               </div>
             )}
             <div className="flex gap-2">

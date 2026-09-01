@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
-import { plainTextFromMarkdown } from "@/lib/blog-markdown";
+import { plainTextFromBody } from "@/lib/blog-blocks";
 import type { NewsletterBuildArgs } from "@/lib/newsletter-html";
 import {
   PRODUCTION_SITE_URL,
@@ -80,7 +80,7 @@ export function buildNewsletterArgsFromPost(
 ): NewsletterBuildArgs {
   const teaserText =
     context.post.teaser?.trim() ||
-    plainTextFromMarkdown(context.post.body, 160);
+    plainTextFromBody(context.post.body, 160);
 
   return {
     title: context.post.title,
