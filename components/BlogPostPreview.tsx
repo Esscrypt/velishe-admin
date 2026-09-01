@@ -3,13 +3,6 @@
 import { useMemo } from "react";
 import { markdownToSafeHtml } from "@/lib/blog-markdown";
 import {
-  isBlocksDocument,
-  parseBlocksDocument,
-  type BlogBlock,
-  type BlogMediaLayout,
-} from "@/lib/blog-blocks";
-import { blockToHtml } from "@/lib/blog-blocks-html";
-import {
   parseBlogVideoUrl,
   type ParsedBlogVideo,
 } from "@/lib/blog-video-url";
@@ -27,39 +20,6 @@ import BlogInstagramEmbed from "@/components/BlogInstagramEmbed";
 
 const BLOG_PROSE_CLASS =
   "blog-prose text-base leading-7 text-gray-900 space-y-4 [&_h2]:font-serif [&_h2]:text-2xl [&_h2]:font-bold [&_h2]:mt-8 [&_h3]:font-serif [&_h3]:text-xl [&_h3]:font-bold [&_h3]:mt-6 [&_a]:underline [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_blockquote]:border-l-2 [&_blockquote]:border-black [&_blockquote]:pl-4 [&_blockquote]:italic [&_blockquote]:text-gray-700";
-
-function mediaLayoutClass(layout: BlogMediaLayout): string {
-  if (layout === "left") {
-    return "float-left mb-4 mr-6 w-full sm:w-[42%] max-w-[300px]";
-  }
-  if (layout === "right") {
-    return "float-right mb-4 ml-6 w-full sm:w-[42%] max-w-[300px]";
-  }
-  return "mb-8 w-full clear-both";
-}
-
-function PreviewBlock({
-  block,
-  images,
-  titleFallback,
-}: {
-  block: BlogBlock;
-  images: BlogImageMeta[];
-  titleFallback: string;
-}) {
-  if (block.type === "media") {
-    const media = images.find((image) => image.id === block.mediaId);
-    if (!media) return null;
-    return (
-      <figure className={`overflow-hidden bg-gray-100 ${mediaLayoutClass(block.layout)}`}>
-        <PreviewMedia media={media} titleFallback={titleFallback} />
-      </figure>
-    );
-  }
-  const html = blockToHtml(block);
-  if (!html) return null;
-  return <div dangerouslySetInnerHTML={{ __html: html }} />;
-}
 
 function CreditName({ name, url }: { name: string; url: string | null }) {
   if (!url) return <>{name}</>;
@@ -205,12 +165,7 @@ export default function BlogPostPreview({
   modelSlug = null,
   credits: creditsRaw = null,
 }: BlogPostPreviewProps) {
-  const usesBlocks = isBlocksDocument(body);
-  const blockDocument = useMemo(() => parseBlocksDocument(body), [body]);
-  const bodyHtml = useMemo(
-    () => (usesBlocks ? "" : markdownToSafeHtml(body)),
-    [body, usesBlocks],
-  );
+  const bodyHtml = useMemo(() => markdownToSafeHtml(body), [body]);
   const credits = useMemo(
     () => normalizeBlogCredits(creditsRaw),
     [creditsRaw],
@@ -284,37 +239,21 @@ export default function BlogPostPreview({
             })}
           </p>
 
-          {!usesBlocks && cover ? (
+          {cover ? (
             <div className="mb-8 w-full overflow-hidden bg-gray-100">
+              {/* Remount embeds when dialog opens so autoplay/iframes initialize */}
               {open ? (
                 <PreviewMedia media={cover} titleFallback={titleFallback} />
               ) : null}
             </div>
           ) : null}
 
-          {usesBlocks && blockDocument ? (
-            <div
-              className={`${BLOG_PROSE_CLASS} clearfix after:content-[''] after:table after:clear-both`}
-            >
-              {open
-                ? blockDocument.blocks.map((block) => (
-                    <PreviewBlock
-                      key={block.id}
-                      block={block}
-                      images={sortedImages}
-                      titleFallback={titleFallback}
-                    />
-                  ))
-                : null}
-            </div>
-          ) : (
-            <div
-              className={BLOG_PROSE_CLASS}
-              dangerouslySetInnerHTML={{ __html: bodyHtml }}
-            />
-          )}
+          <div
+            className={BLOG_PROSE_CLASS}
+            dangerouslySetInnerHTML={{ __html: bodyHtml }}
+          />
 
-          {!usesBlocks && gallery.length > 0 ? (
+          {gallery.length > 0 ? (
             <div className="mt-10 grid grid-cols-2 gap-2">
               {gallery.map((image) => (
                 <div key={image.id} className="overflow-hidden bg-gray-100">

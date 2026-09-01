@@ -332,9 +332,8 @@ export default function BlogImageManager({
     <div className="space-y-3 border-t pt-4">
       <Label>Media</Label>
       <p className="text-sm text-muted-foreground">
-        Upload images or paste a YouTube / Vimeo / Instagram URL. The first item
-        is the cover for the journal index and link previews. Insert other media
-        into the body with a Media block.
+        Upload images or paste a YouTube / Vimeo / Instagram URL. First item is
+        the cover; drag to reorder.
       </p>
       <div
         onDrop={handleDrop}
@@ -358,8 +357,7 @@ export default function BlogImageManager({
             : "Drag and drop images here, or click to select"}
         </p>
         <p className="text-xs text-gray-500">
-          First media is the cover for index cards and social previews. Drag to
-          reorder uploads.
+          First media becomes the cover. Drag handles to reorder.
         </p>
         <Input
           id="blog-image-upload"

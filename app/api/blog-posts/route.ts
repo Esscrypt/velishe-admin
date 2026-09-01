@@ -9,7 +9,6 @@ import {
 } from "@/lib/blog-publish";
 import { resolveBlogModelId, modelSlugForId } from "@/lib/blog-model-id";
 import { normalizeBlogCredits } from "@/lib/blog-credits";
-import { bodyHasContent } from "@/lib/blog-blocks";
 import { triggerRevalidation } from "@/lib/revalidate";
 import { config } from "dotenv";
 
@@ -65,7 +64,7 @@ export async function POST(request: NextRequest) {
 
     const title = typeof body.title === "string" ? body.title.trim() : "";
     const postBody = typeof body.body === "string" ? body.body.trim() : "";
-    if (!title || !bodyHasContent(postBody)) {
+    if (!title || !postBody) {
       return NextResponse.json(
         { error: "Title and body are required" },
         { status: 400 },
