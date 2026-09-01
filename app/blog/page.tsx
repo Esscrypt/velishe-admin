@@ -854,9 +854,7 @@ export default function BlogAdminPage() {
         title={title}
         teaser={teaser}
         body={body}
-        published={
-          editing?.published === true || (editing == null && publishMode === "now")
-        }
+        published={publishMode === "now"}
         slug={editing?.slug}
         images={images}
         modelName={
