@@ -164,6 +164,8 @@ interface Model {
     eyeColor: string;
   };
   instagram?: string;
+  bioEn?: string;
+  bioBg?: string;
   booked?: boolean;
   targetLocation?: string;
   board?: "mainboard" | "development";
@@ -433,6 +435,8 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
       eyeColor: model?.stats?.eyeColor || "",
     },
     instagram: model?.instagram || "",
+    bioEn: model?.bioEn || "",
+    bioBg: model?.bioBg || "",
     booked: model?.booked || false,
     targetLocation: model?.targetLocation || "",
     gender: model?.gender || "female" as "male" | "female",
@@ -555,6 +559,8 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
           eyeColor: model.stats?.eyeColor || "",
         },
         instagram: model.instagram || "",
+        bioEn: model.bioEn || "",
+        bioBg: model.bioBg || "",
         booked: model.booked || false,
         targetLocation: model.targetLocation || "",
         gender: model.gender || "female",
@@ -578,6 +584,8 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
           eyeColor: "",
         },
         instagram: "",
+        bioEn: "",
+        bioBg: "",
         booked: false,
         targetLocation: "",
         gender: "female",
@@ -1465,6 +1473,8 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
             name: dataToSend.name,
             stats: dataToSend.stats,
             instagram: normalizeInstagramUrl(dataToSend.instagram),
+            bioEn: dataToSend.bioEn?.trim() || null,
+            bioBg: dataToSend.bioBg?.trim() || null,
             booked: dataToSend.booked || false,
             targetLocation: dataToSend.targetLocation || null,
             gender: dataToSend.gender,
@@ -1781,6 +1791,8 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
           name: formData.name,
           stats: formData.stats,
           instagram: normalizeInstagramUrl(formData.instagram),
+          bioEn: formData.bioEn?.trim() || null,
+          bioBg: formData.bioBg?.trim() || null,
           booked: formData.booked || false,
           targetLocation: formData.targetLocation || null,
           gender: formData.gender,
@@ -2442,6 +2454,36 @@ export default function ModelForm({ model, onClose, onSave, password: initialPas
               value={formData.instagram}
               onChange={(e) => handleInputChange("instagram", e.target.value)}
             />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="bioEn">Bio (English)</Label>
+            <textarea
+              id="bioEn"
+              rows={4}
+              className="w-full border rounded px-3 py-2 text-sm"
+              placeholder="Leave blank to use the auto-generated English bio"
+              value={formData.bioEn}
+              onChange={(e) => handleInputChange("bioEn", e.target.value)}
+            />
+            <p className="text-xs text-gray-500">
+              Optional. Leave blank to keep the auto-generated bio from stats.
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="bioBg">Bio (Bulgarian)</Label>
+            <textarea
+              id="bioBg"
+              rows={4}
+              className="w-full border rounded px-3 py-2 text-sm"
+              placeholder="Leave blank to use the auto-generated Bulgarian bio"
+              value={formData.bioBg}
+              onChange={(e) => handleInputChange("bioBg", e.target.value)}
+            />
+            <p className="text-xs text-gray-500">
+              Optional. Leave blank to keep the auto-generated bio from stats.
+            </p>
           </div>
 
           <div className="flex items-center gap-4">

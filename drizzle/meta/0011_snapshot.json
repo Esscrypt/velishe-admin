@@ -1,6 +1,6 @@
 {
-  "id": "13849709-2407-4624-aaa2-0617e52da7e6",
-  "prevId": "c952832e-ebbc-40b5-9f10-5cf09662a886",
+  "id": "757c04fb-5436-48e7-89a0-7b0de979e813",
+  "prevId": "13849709-2407-4624-aaa2-0617e52da7e6",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -72,8 +72,27 @@
           "primaryKey": false,
           "notNull": true
         },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'image'"
+        },
         "data": {
           "name": "data",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "video_url": {
+          "name": "video_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "video_provider": {
+          "name": "video_provider",
           "type": "text",
           "primaryKey": false,
           "notNull": false
@@ -98,25 +117,6 @@
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
-        },
-        "kind": {
-          "name": "kind",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'image'"
-        },
-        "video_url": {
-          "name": "video_url",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "video_provider": {
-          "name": "video_provider",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
         }
       },
       "indexes": {},
@@ -197,9 +197,27 @@
           "primaryKey": false,
           "notNull": false
         },
+        "scheduled_publish_at": {
+          "name": "scheduled_publish_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false
+        },
         "newsletter_sent_at": {
           "name": "newsletter_sent_at",
           "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "model_id": {
+          "name": "model_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "credits": {
+          "name": "credits",
+          "type": "jsonb",
           "primaryKey": false,
           "notNull": false
         },
@@ -216,24 +234,6 @@
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
-        },
-        "scheduled_publish_at": {
-          "name": "scheduled_publish_at",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "model_id": {
-          "name": "model_id",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "credits": {
-          "name": "credits",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
         }
       },
       "indexes": {},
@@ -536,6 +536,18 @@
         },
         "instagram": {
           "name": "instagram",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "bio_en": {
+          "name": "bio_en",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "bio_bg": {
+          "name": "bio_bg",
           "type": "text",
           "primaryKey": false,
           "notNull": false

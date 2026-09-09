@@ -254,6 +254,8 @@ export async function POST(request: NextRequest) {
         hairColor: modelData.stats?.hairColor || null,
         eyeColor: modelData.stats?.eyeColor || null,
         instagram: modelData.instagram || null,
+        bioEn: typeof modelData.bioEn === "string" ? modelData.bioEn.trim() || null : null,
+        bioBg: typeof modelData.bioBg === "string" ? modelData.bioBg.trim() || null : null,
         displayOrder: modelData.displayOrder ?? (maxOrder + 1),
         booked: modelData.booked ?? false,
         targetLocation: modelData.targetLocation || null,

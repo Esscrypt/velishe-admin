@@ -25,6 +25,8 @@ export const models = pgTable("models", {
   hairColor: text("hair_color"),
   eyeColor: text("eye_color"),
   instagram: text("instagram"),
+  bioEn: text("bio_en"),
+  bioBg: text("bio_bg"),
   displayOrder: integer("display_order").default(0),
   booked: boolean("booked").default(false),
   targetLocation: text("target_location"),
