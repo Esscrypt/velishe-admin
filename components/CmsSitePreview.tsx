@@ -49,6 +49,8 @@ export default function CmsSitePreview({
   draftRef.current = draft;
   const onPatchRef = useRef(onPatch);
   onPatchRef.current = onPatch;
+  const onSaveRef = useRef(onSave);
+  onSaveRef.current = onSave;
   const flushWaiterRef = useRef<{
     resolve: (draft: PreviewDraft | null) => void;
   } | null>(null);
@@ -143,8 +145,10 @@ export default function CmsSitePreview({
   }, [iframeReady, locale, page]);
 
   const handleSave = async () => {
+    if (disabled || saving) return;
     const iframeDraft = await requestFlush();
-    onSave(iframeDraft);
+    // Always call the latest onSave so it reads current passwordHashRef.
+    onSaveRef.current(iframeDraft);
   };
 
   return (

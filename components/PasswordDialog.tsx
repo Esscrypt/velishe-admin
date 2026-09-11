@@ -20,7 +20,8 @@ import bcrypt from "bcryptjs";
 interface PasswordDialogProps {
   open: boolean;
   onClose: () => void;
-  onSuccess: (passwordHash: string) => void;
+  /** Return `false` to keep the dialog open (e.g. load failed). */
+  onSuccess: (passwordHash: string) => void | boolean | Promise<void | boolean>;
   title?: string;
   description?: string;
 }
@@ -69,7 +70,8 @@ export default function PasswordDialog({
       if (cancelled || !cachedHash) {
         return;
       }
-      onSuccessRef.current(cachedHash);
+      const result = await Promise.resolve(onSuccessRef.current(cachedHash));
+      if (cancelled || result === false) return;
       onCloseRef.current();
     };
 
@@ -138,11 +140,13 @@ export default function PasswordDialog({
       // Cache only the hash, not the raw password
       cachePasswordHash(passwordHash);
 
-      onSuccess(passwordHash);
       setPassword("");
       setRetryCount(0);
       setLockedOut(false);
-      onClose();
+      // Await parent unlock (load) before closing so Save cannot race ahead.
+      const result = await Promise.resolve(onSuccessRef.current(passwordHash));
+      if (result === false) return;
+      onCloseRef.current();
     } catch (err) {
       setError("Failed to process password. Please try again.");
       console.error("Error verifying password:", err);
