@@ -3,36 +3,53 @@ import { verifyPasswordHash } from "./auth";
 
 const PASSWORD_HASH_HEADER = "x-admin-password-hash";
 
+function isRequestLike(
+  value: unknown,
+): value is Pick<NextRequest, "json" | "headers"> {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "headers" in value &&
+    typeof (value as { json?: unknown }).json === "function"
+  );
+}
+
 /**
- * Middleware to verify password hash from request body or header.
- * Expects a passwordHash field (SHA-256 hash from client)
- * Can accept either a NextRequest (will parse body) or a parsed body object
+ * Verify password hash from request body and/or header.
+ * Avoid `instanceof NextRequest` — it fails across Next.js module boundaries.
  */
 export async function verifyAuth(
-  requestOrBody: NextRequest | { passwordHash?: string }
+  requestOrBody: NextRequest | { passwordHash?: string },
 ): Promise<{
   authorized: boolean;
   response?: NextResponse;
   body?: any;
 }> {
   try {
-    let body: { passwordHash?: string; [key: string]: unknown };
+    let body: { passwordHash?: string; [key: string]: unknown } = {};
     let headerHash: string | null = null;
 
-    if (requestOrBody instanceof NextRequest) {
+    if (isRequestLike(requestOrBody)) {
       headerHash = requestOrBody.headers.get(PASSWORD_HASH_HEADER);
       try {
-        body = await requestOrBody.json();
+        const parsed = await requestOrBody.json();
+        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+          body = parsed as { passwordHash?: string; [key: string]: unknown };
+        }
       } catch {
         body = {};
       }
-    } else {
-      body = requestOrBody;
+    } else if (
+      requestOrBody &&
+      typeof requestOrBody === "object" &&
+      !Array.isArray(requestOrBody)
+    ) {
+      body = requestOrBody as { passwordHash?: string; [key: string]: unknown };
     }
 
     const passwordHash =
-      (typeof body.passwordHash === "string" && body.passwordHash) ||
-      headerHash ||
+      (typeof body.passwordHash === "string" && body.passwordHash.trim()) ||
+      (typeof headerHash === "string" && headerHash.trim()) ||
       undefined;
 
     if (!passwordHash) {
@@ -40,25 +57,22 @@ export async function verifyAuth(
         authorized: false,
         response: NextResponse.json(
           { error: "Password hash is required" },
-          { status: 401 }
+          { status: 401 },
         ),
       };
     }
 
     const isValid = await verifyPasswordHash(passwordHash);
-    console.log("[verifyAuth] Password hash verification result:", isValid);
     if (!isValid) {
-      console.log("[verifyAuth] Returning 401 - Invalid password");
       return {
         authorized: false,
         response: NextResponse.json(
           { error: "Invalid password" },
-          { status: 401 }
+          { status: 401 },
         ),
       };
     }
 
-    console.log("[verifyAuth] Authentication successful");
     return { authorized: true, body: { ...body, passwordHash } };
   } catch (error) {
     console.error("Error verifying auth:", error);
@@ -66,7 +80,7 @@ export async function verifyAuth(
       authorized: false,
       response: NextResponse.json(
         { error: "Authentication failed" },
-        { status: 401 }
+        { status: 401 },
       ),
     };
   }

@@ -24,6 +24,8 @@ interface PasswordDialogProps {
   onSuccess: (passwordHash: string) => void | boolean | Promise<void | boolean>;
   title?: string;
   description?: string;
+  /** When false, do not auto-unlock from session cache (avoids save-retry loops). */
+  autoUnlock?: boolean;
 }
 
 const PASSWORD_HASH_CACHE_KEY = "admin_password_hash";
@@ -36,6 +38,7 @@ export default function PasswordDialog({
   onSuccess,
   title = "Admin Authentication",
   description = "Please enter your admin password to continue.",
+  autoUnlock = true,
 }: Readonly<PasswordDialogProps>) {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -64,6 +67,10 @@ export default function PasswordDialog({
     setRetryCount(0);
     setLockedOut(false);
 
+    if (!autoUnlock) {
+      return;
+    }
+
     let cancelled = false;
     let unlockStarted = false;
 
@@ -84,7 +91,7 @@ export default function PasswordDialog({
     return () => {
       cancelled = true;
     };
-  }, [open]);
+  }, [open, autoUnlock]);
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     e.stopPropagation();

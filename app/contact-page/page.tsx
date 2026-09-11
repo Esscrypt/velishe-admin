@@ -71,6 +71,7 @@ function isContactDraft(draft: PreviewDraft): draft is ContactPreviewDraft {
 export default function ContactContentAdminPage() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [showPasswordDialog, setShowPasswordDialog] = useState(false);
+  const [passwordDialogAutoUnlock, setPasswordDialogAutoUnlock] = useState(true);
   const [content, setContent] = useState<{ en: LocaleBody; bg: LocaleBody }>({
     en: { ...EMPTY },
     bg: { ...EMPTY },
@@ -107,6 +108,7 @@ export default function ContactContentAdminPage() {
         );
         if (response.status === 401) {
           clearAuth();
+          setPasswordDialogAutoUnlock(true);
           setShowPasswordDialog(true);
           return false;
         }
@@ -162,6 +164,7 @@ export default function ContactContentAdminPage() {
         passwordHashRef.current = cached;
         await load(cached);
       } else {
+        setPasswordDialogAutoUnlock(true);
         setShowPasswordDialog(true);
       }
     })();
@@ -171,18 +174,24 @@ export default function ContactContentAdminPage() {
   }, [load]);
 
   const performSave = useCallback(
-    async (iframeDraft: PreviewDraft | null) => {
-      if (saveInFlightRef.current) return;
+    async (
+      iframeDraft: PreviewDraft | null,
+      options?: { suppressAuthDialog?: boolean },
+    ) => {
+      if (saveInFlightRef.current) return false;
       saveInFlightRef.current = true;
 
       try {
         const hash =
           passwordHashRef.current.trim() || getCachedPasswordHash() || "";
         if (!hash) {
-          pendingDraftRef.current = iframeDraft;
-          setShowPasswordDialog(true);
-          setMessage("Enter the admin password to save.");
-          return;
+          if (!options?.suppressAuthDialog) {
+            pendingDraftRef.current = iframeDraft;
+            setPasswordDialogAutoUnlock(false);
+            setShowPasswordDialog(true);
+            setMessage("Enter the admin password to save.");
+          }
+          return false;
         }
         passwordHashRef.current = hash;
 
@@ -220,21 +229,24 @@ export default function ContactContentAdminPage() {
             error?: string;
           } | null;
           const errorMessage = err?.error ?? "Save failed.";
-          if (response.status === 401) {
+          if (response.status === 401 && !options?.suppressAuthDialog) {
             pendingDraftRef.current = iframeDraft;
             if (errorMessage === "Invalid password") {
               clearAuth();
             }
+            setPasswordDialogAutoUnlock(false);
             setShowPasswordDialog(true);
           }
           setMessage(errorMessage);
-          return;
+          return false;
         }
 
         pendingDraftRef.current = undefined;
         setMessage("Saved. Public site cache will refresh in a few seconds.");
+        return true;
       } catch {
         setMessage("Save failed.");
+        return false;
       } finally {
         setSaving(false);
         saveInFlightRef.current = false;
@@ -249,10 +261,14 @@ export default function ContactContentAdminPage() {
       const ok = await load(hash);
       if (!ok) return false;
       setShowPasswordDialog(false);
+      setPasswordDialogAutoUnlock(true);
       const pending = pendingDraftRef.current;
       pendingDraftRef.current = undefined;
       if (pending !== undefined) {
-        await performSave(pending);
+        const saved = await performSave(pending, { suppressAuthDialog: true });
+        if (!saved) {
+          setMessage("Signed in, but save failed. Click Save once more.");
+        }
       }
       return true;
     },
@@ -314,6 +330,7 @@ export default function ContactContentAdminPage() {
         title="Contact page"
         description="Enter admin password to edit contact copy."
         onSuccess={handlePasswordSuccess}
+        autoUnlock={passwordDialogAutoUnlock}
       />
     </div>
   );
