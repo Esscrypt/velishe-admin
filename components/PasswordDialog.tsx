@@ -40,6 +40,7 @@ export default function PasswordDialog({
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const submittingRef = useRef(false);
   const [showPassword, setShowPassword] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
   const [lockedOut, setLockedOut] = useState(false);
@@ -64,8 +65,11 @@ export default function PasswordDialog({
     setLockedOut(false);
 
     let cancelled = false;
+    let unlockStarted = false;
 
     const unlockWithCachedHash = async () => {
+      if (unlockStarted) return;
+      unlockStarted = true;
       const cachedHash = await getVerifiedCachedPasswordHash();
       if (cancelled || !cachedHash) {
         return;
@@ -83,9 +87,11 @@ export default function PasswordDialog({
   }, [open]);
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (lockedOut) {
+    e.stopPropagation();
+    if (lockedOut || loading || submittingRef.current) {
       return;
     }
+    submittingRef.current = true;
 
     setError("");
     setLoading(true);
@@ -94,14 +100,12 @@ export default function PasswordDialog({
       const trimmedPassword = password.trim();
       if (!trimmedPassword) {
         setError("Password cannot be empty");
-        setLoading(false);
         return;
       }
 
       const storedHashResponse = await fetch("/api/admin-password-hash");
       if (!storedHashResponse.ok) {
         setError("Unable to verify password. Please try again.");
-        setLoading(false);
         return;
       }
 
@@ -110,7 +114,6 @@ export default function PasswordDialog({
       };
       if (!storedHash) {
         setError("Admin password is not configured.");
-        setLoading(false);
         return;
       }
 
@@ -133,7 +136,6 @@ export default function PasswordDialog({
             `Incorrect password. ${attemptsLeft} attempt${attemptsLeft === 1 ? "" : "s"} remaining.`
           );
         }
-        setLoading(false);
         return;
       }
 
@@ -151,18 +153,25 @@ export default function PasswordDialog({
       setError("Failed to process password. Please try again.");
       console.error("Error verifying password:", err);
     } finally {
+      submittingRef.current = false;
       setLoading(false);
     }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && !loading && !lockedOut) {
-      handleSubmit(e);
+    // Let the form onSubmit handle Enter — do not call handleSubmit again.
+    if (e.key === "Enter") {
+      e.stopPropagation();
     }
   };
 
   return (
-    <Dialog open={open} onOpenChange={onClose}>
+    <Dialog
+      open={open}
+      onOpenChange={(nextOpen) => {
+        if (!nextOpen) onClose();
+      }}
+    >
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <div className="flex items-center gap-2">

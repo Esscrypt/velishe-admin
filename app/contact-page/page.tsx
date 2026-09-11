@@ -79,11 +79,11 @@ export default function ContactContentAdminPage() {
   contentRef.current = content;
   const passwordHashRef = useRef("");
   const pendingDraftRef = useRef<PreviewDraft | null | undefined>(undefined);
+  const saveInFlightRef = useRef(false);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
   const [previewLocale, setPreviewLocale] = useState<"en" | "bg">("en");
-  const loadedRef = useRef(false);
 
   const previewDraft = useMemo(
     () => resolveDraft(previewLocale, content),
@@ -94,7 +94,6 @@ export default function ContactContentAdminPage() {
     clearCachedPasswordHash();
     passwordHashRef.current = "";
     setIsAuthenticated(false);
-    loadedRef.current = false;
   }, []);
 
   const load = useCallback(
@@ -142,7 +141,6 @@ export default function ContactContentAdminPage() {
         };
         setContent(next);
         contentRef.current = next;
-        loadedRef.current = true;
         setIsAuthenticated(true);
         return true;
       } catch {
@@ -158,8 +156,7 @@ export default function ContactContentAdminPage() {
   useEffect(() => {
     let cancelled = false;
     void (async () => {
-      const quick = getCachedPasswordHash();
-      const cached = quick ?? (await getVerifiedCachedPasswordHash());
+      const cached = await getVerifiedCachedPasswordHash();
       if (cancelled) return;
       if (cached) {
         passwordHashRef.current = cached;
@@ -175,57 +172,72 @@ export default function ContactContentAdminPage() {
 
   const performSave = useCallback(
     async (iframeDraft: PreviewDraft | null) => {
-      const hash = passwordHashRef.current.trim() || getCachedPasswordHash() || "";
-      if (!hash) {
-        pendingDraftRef.current = iframeDraft;
-        setShowPasswordDialog(true);
-        setMessage("Enter the admin password to save.");
-        return;
-      }
-      passwordHashRef.current = hash;
+      if (saveInFlightRef.current) return;
+      saveInFlightRef.current = true;
 
-      let nextContent = contentRef.current;
-      if (iframeDraft && isContactDraft(iframeDraft)) {
-        nextContent = {
-          ...nextContent,
-          [previewLocale]: {
-            ...nextContent[previewLocale],
-            ...iframeDraft,
-          },
-        };
-        setContent(nextContent);
-        contentRef.current = nextContent;
-      }
-
-      setSaving(true);
-      setMessage("");
       try {
+        const hash =
+          passwordHashRef.current.trim() || getCachedPasswordHash() || "";
+        if (!hash) {
+          pendingDraftRef.current = iframeDraft;
+          setShowPasswordDialog(true);
+          setMessage("Enter the admin password to save.");
+          return;
+        }
+        passwordHashRef.current = hash;
+
+        let nextContent = contentRef.current;
+        if (iframeDraft && isContactDraft(iframeDraft)) {
+          nextContent = {
+            ...nextContent,
+            [previewLocale]: {
+              ...nextContent[previewLocale],
+              ...iframeDraft,
+            },
+          };
+          setContent(nextContent);
+          contentRef.current = nextContent;
+        }
+
+        setSaving(true);
+        setMessage("");
+
         const payload = {
           en: { ...nextContent.en, intro3: "", intro4: "" },
           bg: { ...nextContent.bg, intro3: "", intro4: "" },
         };
         const response = await fetch("/api/site-content/contact", {
           method: "PUT",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            "X-Admin-Password-Hash": hash,
+          },
           body: JSON.stringify({ passwordHash: hash, content: payload }),
         });
+
         if (!response.ok) {
           const err = (await response.json().catch(() => null)) as {
             error?: string;
           } | null;
+          const errorMessage = err?.error ?? "Save failed.";
           if (response.status === 401) {
             pendingDraftRef.current = iframeDraft;
-            clearAuth();
+            if (errorMessage === "Invalid password") {
+              clearAuth();
+            }
             setShowPasswordDialog(true);
           }
-          setMessage(err?.error ?? "Save failed.");
+          setMessage(errorMessage);
           return;
         }
+
+        pendingDraftRef.current = undefined;
         setMessage("Saved. Public site cache will refresh in a few seconds.");
       } catch {
         setMessage("Save failed.");
       } finally {
         setSaving(false);
+        saveInFlightRef.current = false;
       }
     },
     [clearAuth, previewLocale],
@@ -237,9 +249,9 @@ export default function ContactContentAdminPage() {
       const ok = await load(hash);
       if (!ok) return false;
       setShowPasswordDialog(false);
-      if (pendingDraftRef.current !== undefined) {
-        const pending = pendingDraftRef.current;
-        pendingDraftRef.current = undefined;
+      const pending = pendingDraftRef.current;
+      pendingDraftRef.current = undefined;
+      if (pending !== undefined) {
         await performSave(pending);
       }
       return true;
@@ -266,10 +278,7 @@ export default function ContactContentAdminPage() {
   );
 
   const saveDisabled =
-    !isAuthenticated ||
-    loading ||
-    showPasswordDialog ||
-    !passwordHashRef.current;
+    !isAuthenticated || loading || showPasswordDialog || saving;
 
   return (
     <div className="min-h-screen bg-gray-50 p-8">
@@ -292,9 +301,7 @@ export default function ContactContentAdminPage() {
           locale={previewLocale}
           onLocaleChange={setPreviewLocale}
           draft={previewDraft}
-          onSave={(iframeDraft) => {
-            void performSave(iframeDraft);
-          }}
+          onSave={(iframeDraft) => performSave(iframeDraft)}
           saving={saving}
           disabled={saveDisabled}
           onPatch={handlePatch}

@@ -51,6 +51,8 @@ export default function CmsSitePreview({
   onPatchRef.current = onPatch;
   const onSaveRef = useRef(onSave);
   onSaveRef.current = onSave;
+  const saveLockRef = useRef(false);
+  const [flushing, setFlushing] = useState(false);
   const flushWaiterRef = useRef<{
     resolve: (draft: PreviewDraft | null) => void;
   } | null>(null);
@@ -107,8 +109,6 @@ export default function CmsSitePreview({
       },
       FE_URL,
     );
-    // Intentionally omit `draft`: pushing on every keystroke/patch wipes
-    // in-progress edits in other fields. Save uses FLUSH → SNAPSHOT instead.
   }, [iframeReady, page, locale]);
 
   const requestFlush = useCallback((): Promise<PreviewDraft | null> => {
@@ -145,16 +145,23 @@ export default function CmsSitePreview({
   }, [iframeReady, locale, page]);
 
   const handleSave = async () => {
-    if (disabled || saving) return;
-    const iframeDraft = await requestFlush();
-    // Always call the latest onSave so it reads current passwordHashRef.
-    onSaveRef.current(iframeDraft);
+    if (disabled || saving || saveLockRef.current) return;
+    saveLockRef.current = true;
+    setFlushing(true);
+    try {
+      const iframeDraft = await requestFlush();
+      await Promise.resolve(onSaveRef.current(iframeDraft));
+    } finally {
+      saveLockRef.current = false;
+      setFlushing(false);
+    }
   };
 
   return (
     <section className="flex min-h-[70vh] flex-col gap-3 rounded-lg border bg-white p-4">
       <div className="flex flex-wrap items-center gap-2">
         <Button
+          type="button"
           size="sm"
           variant={locale === "en" ? "default" : "outline"}
           onClick={() => {
@@ -166,6 +173,7 @@ export default function CmsSitePreview({
           English
         </Button>
         <Button
+          type="button"
           size="sm"
           variant={locale === "bg" ? "default" : "outline"}
           onClick={() => {
@@ -185,13 +193,14 @@ export default function CmsSitePreview({
           Open in new tab
         </a>
         <Button
+          type="button"
           className="ml-auto"
           onClick={() => {
             void handleSave();
           }}
-          disabled={disabled || saving}
+          disabled={disabled || saving || flushing}
         >
-          {saving ? "Saving…" : "Save"}
+          {saving || flushing ? "Saving…" : "Save"}
         </Button>
       </div>
       <p className="text-xs text-gray-500">

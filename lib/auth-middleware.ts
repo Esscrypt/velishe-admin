@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyPasswordHash } from "./auth";
 
+const PASSWORD_HASH_HEADER = "x-admin-password-hash";
+
 /**
- * Middleware to verify password hash from request body
+ * Middleware to verify password hash from request body or header.
  * Expects a passwordHash field (SHA-256 hash from client)
  * Can accept either a NextRequest (will parse body) or a parsed body object
  */
@@ -14,12 +16,24 @@ export async function verifyAuth(
   body?: any;
 }> {
   try {
-    // If it's a request, parse the body. Otherwise, use the provided body.
-    const body = requestOrBody instanceof NextRequest
-      ? await requestOrBody.json()
-      : requestOrBody;
-    
-    const passwordHash = body.passwordHash;
+    let body: { passwordHash?: string; [key: string]: unknown };
+    let headerHash: string | null = null;
+
+    if (requestOrBody instanceof NextRequest) {
+      headerHash = requestOrBody.headers.get(PASSWORD_HASH_HEADER);
+      try {
+        body = await requestOrBody.json();
+      } catch {
+        body = {};
+      }
+    } else {
+      body = requestOrBody;
+    }
+
+    const passwordHash =
+      (typeof body.passwordHash === "string" && body.passwordHash) ||
+      headerHash ||
+      undefined;
 
     if (!passwordHash) {
       return {
@@ -45,7 +59,7 @@ export async function verifyAuth(
     }
 
     console.log("[verifyAuth] Authentication successful");
-    return { authorized: true, body };
+    return { authorized: true, body: { ...body, passwordHash } };
   } catch (error) {
     console.error("Error verifying auth:", error);
     return {
@@ -57,4 +71,3 @@ export async function verifyAuth(
     };
   }
 }
-

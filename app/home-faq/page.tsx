@@ -104,11 +104,11 @@ export default function HomeFaqAdminPage() {
   contentRef.current = content;
   const passwordHashRef = useRef("");
   const pendingDraftRef = useRef<PreviewDraft | null | undefined>(undefined);
+  const saveInFlightRef = useRef(false);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
   const [previewLocale, setPreviewLocale] = useState<"en" | "bg">("en");
-  const loadedRef = useRef(false);
 
   const previewDraft = useMemo(
     () => withQuestionDefaults(previewLocale, content[previewLocale]),
@@ -119,7 +119,6 @@ export default function HomeFaqAdminPage() {
     clearCachedPasswordHash();
     passwordHashRef.current = "";
     setIsAuthenticated(false);
-    loadedRef.current = false;
   }, []);
 
   const load = useCallback(
@@ -147,7 +146,6 @@ export default function HomeFaqAdminPage() {
         };
         setContent(next);
         contentRef.current = next;
-        loadedRef.current = true;
         setIsAuthenticated(true);
         return true;
       } catch {
@@ -163,8 +161,7 @@ export default function HomeFaqAdminPage() {
   useEffect(() => {
     let cancelled = false;
     void (async () => {
-      const quick = getCachedPasswordHash();
-      const cached = quick ?? (await getVerifiedCachedPasswordHash());
+      const cached = await getVerifiedCachedPasswordHash();
       if (cancelled) return;
       if (cached) {
         passwordHashRef.current = cached;
@@ -180,53 +177,70 @@ export default function HomeFaqAdminPage() {
 
   const performSave = useCallback(
     async (iframeDraft: PreviewDraft | null) => {
-      const hash = passwordHashRef.current.trim() || getCachedPasswordHash() || "";
-      if (!hash) {
-        pendingDraftRef.current = iframeDraft;
-        setShowPasswordDialog(true);
-        setMessage("Enter the admin password to save.");
-        return;
-      }
-      passwordHashRef.current = hash;
+      if (saveInFlightRef.current) return;
+      saveInFlightRef.current = true;
 
-      let nextContent = contentRef.current;
-      if (iframeDraft && isHomeFaqDraft(iframeDraft)) {
-        nextContent = {
-          ...nextContent,
-          [previewLocale]: {
-            ...nextContent[previewLocale],
-            ...iframeDraft,
-          },
-        };
-        setContent(nextContent);
-        contentRef.current = nextContent;
-      }
-
-      setSaving(true);
-      setMessage("");
       try {
+        const hash =
+          passwordHashRef.current.trim() || getCachedPasswordHash() || "";
+        if (!hash) {
+          pendingDraftRef.current = iframeDraft;
+          setShowPasswordDialog(true);
+          setMessage("Enter the admin password to save.");
+          return;
+        }
+        passwordHashRef.current = hash;
+
+        let nextContent = contentRef.current;
+        if (iframeDraft && isHomeFaqDraft(iframeDraft)) {
+          nextContent = {
+            ...nextContent,
+            [previewLocale]: {
+              ...nextContent[previewLocale],
+              ...iframeDraft,
+            },
+          };
+          setContent(nextContent);
+          contentRef.current = nextContent;
+        }
+
+        setSaving(true);
+        setMessage("");
+
         const response = await fetch("/api/site-content/home-faq", {
           method: "PUT",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            "X-Admin-Password-Hash": hash,
+          },
           body: JSON.stringify({ passwordHash: hash, content: nextContent }),
         });
+
         if (!response.ok) {
           const err = (await response.json().catch(() => null)) as {
             error?: string;
           } | null;
+          const errorMessage = err?.error ?? "Save failed.";
           if (response.status === 401) {
+            // Missing hash is a client race — re-auth once, keep draft queued.
+            // Invalid password means the session is bad — clear and ask again.
             pendingDraftRef.current = iframeDraft;
-            clearAuth();
+            if (errorMessage === "Invalid password") {
+              clearAuth();
+            }
             setShowPasswordDialog(true);
           }
-          setMessage(err?.error ?? "Save failed.");
+          setMessage(errorMessage);
           return;
         }
+
+        pendingDraftRef.current = undefined;
         setMessage("Saved. Public site cache will refresh in a few seconds.");
       } catch {
         setMessage("Save failed.");
       } finally {
         setSaving(false);
+        saveInFlightRef.current = false;
       }
     },
     [clearAuth, previewLocale],
@@ -238,9 +252,9 @@ export default function HomeFaqAdminPage() {
       const ok = await load(hash);
       if (!ok) return false;
       setShowPasswordDialog(false);
-      if (pendingDraftRef.current !== undefined) {
-        const pending = pendingDraftRef.current;
-        pendingDraftRef.current = undefined;
+      const pending = pendingDraftRef.current;
+      pendingDraftRef.current = undefined;
+      if (pending !== undefined) {
         await performSave(pending);
       }
       return true;
@@ -267,10 +281,7 @@ export default function HomeFaqAdminPage() {
   );
 
   const saveDisabled =
-    !isAuthenticated ||
-    loading ||
-    showPasswordDialog ||
-    !passwordHashRef.current;
+    !isAuthenticated || loading || showPasswordDialog || saving;
 
   return (
     <div className="min-h-screen bg-gray-50 p-8">
@@ -293,9 +304,7 @@ export default function HomeFaqAdminPage() {
           locale={previewLocale}
           onLocaleChange={setPreviewLocale}
           draft={previewDraft}
-          onSave={(iframeDraft) => {
-            void performSave(iframeDraft);
-          }}
+          onSave={(iframeDraft) => performSave(iframeDraft)}
           saving={saving}
           disabled={saveDisabled}
           onPatch={handlePatch}
