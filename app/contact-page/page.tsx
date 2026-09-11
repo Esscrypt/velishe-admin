@@ -85,6 +85,8 @@ export default function ContactContentAdminPage() {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
   const [previewLocale, setPreviewLocale] = useState<"en" | "bg">("en");
+  const [contentVersion, setContentVersion] = useState(0);
+  const [contentReady, setContentReady] = useState(false);
 
   const previewDraft = useMemo(
     () => resolveDraft(previewLocale, content),
@@ -95,12 +97,14 @@ export default function ContactContentAdminPage() {
     clearCachedPasswordHash();
     passwordHashRef.current = "";
     setIsAuthenticated(false);
+    setContentReady(false);
   }, []);
 
   const load = useCallback(
     async (hash: string) => {
       passwordHashRef.current = hash;
       setLoading(true);
+      setContentReady(false);
       setMessage("");
       try {
         const response = await fetch(
@@ -144,6 +148,8 @@ export default function ContactContentAdminPage() {
         setContent(next);
         contentRef.current = next;
         setIsAuthenticated(true);
+        setContentReady(true);
+        setContentVersion((version) => version + 1);
         return true;
       } catch {
         setMessage("Failed to load contact content.");
@@ -315,8 +321,13 @@ export default function ContactContentAdminPage() {
         <CmsSitePreview
           page="contact"
           locale={previewLocale}
-          onLocaleChange={setPreviewLocale}
+          onLocaleChange={(locale) => {
+            setPreviewLocale(locale);
+            setContentVersion((version) => version + 1);
+          }}
           draft={previewDraft}
+          contentReady={contentReady && isAuthenticated && !loading}
+          contentVersion={contentVersion}
           onSave={(iframeDraft) => performSave(iframeDraft)}
           saving={saving}
           disabled={saveDisabled}

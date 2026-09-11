@@ -1,76 +1,40 @@
 import { NextRequest, NextResponse } from "next/server";
-import { eq } from "drizzle-orm";
+import { asc, eq } from "drizzle-orm";
 import { verifyAuth } from "@/lib/auth-middleware";
 import { getDb, schema } from "@/lib/db";
-import {
-  SITE_CONTENT_SINGLETON_ID,
-  type HomeFaqContentInsert,
-} from "@/lib/db/schema";
+import type { HomeFaqItemInsert } from "@/lib/db/schema";
 import { triggerRevalidation } from "@/lib/revalidate";
 
-export type HomeFaqLocaleBody = {
-  intro: string;
-  whatWeDo: string;
-  requirements: string;
-  academy: string;
-  booking: string;
-  journal: string;
-  vision: string;
-  questionAbout: string;
-  questionWhatWeDo: string;
-  questionRequirements: string;
-  questionAcademy: string;
-  questionBooking: string;
-  questionJournal: string;
+export type HomeFaqItemBody = {
+  id: string;
+  question: string;
+  answer: string;
 };
 
 export type HomeFaqContentBody = {
-  en: HomeFaqLocaleBody;
-  bg: HomeFaqLocaleBody;
+  en: HomeFaqItemBody[];
+  bg: HomeFaqItemBody[];
 };
 
-const LOCALE_KEYS = [
-  "intro",
-  "whatWeDo",
-  "requirements",
-  "academy",
-  "booking",
-  "journal",
-  "vision",
-  "questionAbout",
-  "questionWhatWeDo",
-  "questionRequirements",
-  "questionAcademy",
-  "questionBooking",
-  "questionJournal",
-] as const satisfies ReadonlyArray<keyof HomeFaqLocaleBody>;
-
-function emptyLocale(): HomeFaqLocaleBody {
-  return {
-    intro: "",
-    whatWeDo: "",
-    requirements: "",
-    academy: "",
-    booking: "",
-    journal: "",
-    vision: "",
-    questionAbout: "",
-    questionWhatWeDo: "",
-    questionRequirements: "",
-    questionAcademy: "",
-    questionBooking: "",
-    questionJournal: "",
-  };
+function normalizeItem(raw: unknown): HomeFaqItemBody | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const o = raw as Record<string, unknown>;
+  const id = typeof o.id === "string" ? o.id.trim() : "";
+  const question = typeof o.question === "string" ? o.question : "";
+  const answer = typeof o.answer === "string" ? o.answer : "";
+  if (!id) return null;
+  return { id, question, answer };
 }
 
-function normalizeLocale(raw: unknown): HomeFaqLocaleBody {
-  const o =
-    raw && typeof raw === "object" && !Array.isArray(raw)
-      ? (raw as Record<string, unknown>)
-      : {};
-  const out = emptyLocale();
-  for (const key of LOCALE_KEYS) {
-    out[key] = typeof o[key] === "string" ? (o[key] as string) : "";
+function normalizeItems(raw: unknown): HomeFaqItemBody[] {
+  if (!Array.isArray(raw)) return [];
+  const out: HomeFaqItemBody[] = [];
+  const seen = new Set<string>();
+  for (const entry of raw) {
+    const item = normalizeItem(entry);
+    if (!item || seen.has(item.id)) continue;
+    seen.add(item.id);
+    out.push(item);
   }
   return out;
 }
@@ -81,82 +45,26 @@ function normalizeContent(raw: unknown): HomeFaqContentBody {
       ? (raw as Record<string, unknown>)
       : {};
   return {
-    en: normalizeLocale(root.en),
-    bg: normalizeLocale(root.bg),
+    en: normalizeItems(root.en),
+    bg: normalizeItems(root.bg),
   };
 }
 
-function rowToContent(
-  row: typeof schema.homeFaqContent.$inferSelect | undefined,
+function rowsToContent(
+  rows: Array<typeof schema.homeFaqItems.$inferSelect>,
 ): HomeFaqContentBody {
-  if (!row) {
-    return { en: emptyLocale(), bg: emptyLocale() };
+  const en: HomeFaqItemBody[] = [];
+  const bg: HomeFaqItemBody[] = [];
+  for (const row of rows) {
+    const item = {
+      id: row.id,
+      question: row.question ?? "",
+      answer: row.answer ?? "",
+    };
+    if (row.locale === "bg") bg.push(item);
+    else if (row.locale === "en") en.push(item);
   }
-  return {
-    en: {
-      intro: row.introEn ?? "",
-      whatWeDo: row.whatWeDoEn ?? "",
-      requirements: row.requirementsEn ?? "",
-      academy: row.academyEn ?? "",
-      booking: row.bookingEn ?? "",
-      journal: row.journalEn ?? "",
-      vision: row.visionEn ?? "",
-      questionAbout: row.questionAboutEn ?? "",
-      questionWhatWeDo: row.questionWhatWeDoEn ?? "",
-      questionRequirements: row.questionRequirementsEn ?? "",
-      questionAcademy: row.questionAcademyEn ?? "",
-      questionBooking: row.questionBookingEn ?? "",
-      questionJournal: row.questionJournalEn ?? "",
-    },
-    bg: {
-      intro: row.introBg ?? "",
-      whatWeDo: row.whatWeDoBg ?? "",
-      requirements: row.requirementsBg ?? "",
-      academy: row.academyBg ?? "",
-      booking: row.bookingBg ?? "",
-      journal: row.journalBg ?? "",
-      vision: row.visionBg ?? "",
-      questionAbout: row.questionAboutBg ?? "",
-      questionWhatWeDo: row.questionWhatWeDoBg ?? "",
-      questionRequirements: row.questionRequirementsBg ?? "",
-      questionAcademy: row.questionAcademyBg ?? "",
-      questionBooking: row.questionBookingBg ?? "",
-      questionJournal: row.questionJournalBg ?? "",
-    },
-  };
-}
-
-function contentToInsert(content: HomeFaqContentBody): HomeFaqContentInsert {
-  return {
-    id: SITE_CONTENT_SINGLETON_ID,
-    introEn: content.en.intro,
-    whatWeDoEn: content.en.whatWeDo,
-    requirementsEn: content.en.requirements,
-    academyEn: content.en.academy,
-    bookingEn: content.en.booking,
-    journalEn: content.en.journal,
-    visionEn: content.en.vision,
-    questionAboutEn: content.en.questionAbout,
-    questionWhatWeDoEn: content.en.questionWhatWeDo,
-    questionRequirementsEn: content.en.questionRequirements,
-    questionAcademyEn: content.en.questionAcademy,
-    questionBookingEn: content.en.questionBooking,
-    questionJournalEn: content.en.questionJournal,
-    introBg: content.bg.intro,
-    whatWeDoBg: content.bg.whatWeDo,
-    requirementsBg: content.bg.requirements,
-    academyBg: content.bg.academy,
-    bookingBg: content.bg.booking,
-    journalBg: content.bg.journal,
-    visionBg: content.bg.vision,
-    questionAboutBg: content.bg.questionAbout,
-    questionWhatWeDoBg: content.bg.questionWhatWeDo,
-    questionRequirementsBg: content.bg.questionRequirements,
-    questionAcademyBg: content.bg.questionAcademy,
-    questionBookingBg: content.bg.questionBooking,
-    questionJournalBg: content.bg.questionJournal,
-    updatedAt: new Date(),
-  };
+  return { en, bg };
 }
 
 export async function GET(request: NextRequest) {
@@ -172,13 +80,19 @@ export async function GET(request: NextRequest) {
 
     const rows = await db
       .select()
-      .from(schema.homeFaqContent)
-      .where(eq(schema.homeFaqContent.id, SITE_CONTENT_SINGLETON_ID))
-      .limit(1);
+      .from(schema.homeFaqItems)
+      .orderBy(asc(schema.homeFaqItems.locale), asc(schema.homeFaqItems.sortOrder));
+
+    const content = rowsToContent(rows);
+    const latest = rows.reduce<Date | null>((acc, row) => {
+      if (!row.updatedAt) return acc;
+      if (!acc || row.updatedAt > acc) return row.updatedAt;
+      return acc;
+    }, null);
 
     return NextResponse.json({
-      content: rowToContent(rows[0]),
-      updatedAt: rows[0]?.updatedAt ?? null,
+      content,
+      updatedAt: latest,
     });
   } catch (error) {
     console.error("[GET /api/site-content/home-faq]", error);
@@ -191,6 +105,12 @@ export async function PUT(request: NextRequest) {
     const auth = await verifyAuth(request);
     if (!auth.authorized) return auth.response!;
     const body = auth.body as { content?: unknown };
+    if (body.content === undefined) {
+      return NextResponse.json(
+        { error: "content is required" },
+        { status: 400 },
+      );
+    }
 
     const content = normalizeContent(body.content);
     const db = getDb();
@@ -198,15 +118,28 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: "Database unavailable" }, { status: 500 });
     }
 
-    const values = contentToInsert(content);
-    const { id: _id, ...setValues } = values;
-    await db
-      .insert(schema.homeFaqContent)
-      .values(values)
-      .onConflictDoUpdate({
-        target: schema.homeFaqContent.id,
-        set: setValues,
-      });
+    const updatedAt = new Date();
+
+    await db.transaction(async (tx) => {
+      for (const locale of ["en", "bg"] as const) {
+        await tx
+          .delete(schema.homeFaqItems)
+          .where(eq(schema.homeFaqItems.locale, locale));
+
+        const items = content[locale];
+        if (items.length === 0) continue;
+
+        const values: HomeFaqItemInsert[] = items.map((item, index) => ({
+          id: item.id,
+          locale,
+          sortOrder: index,
+          question: item.question,
+          answer: item.answer,
+          updatedAt,
+        }));
+        await tx.insert(schema.homeFaqItems).values(values);
+      }
+    });
 
     await triggerRevalidation({ type: "home_faq" });
     return NextResponse.json({ ok: true, content });

@@ -12,94 +12,102 @@ import CmsSitePreview from "@/components/CmsSitePreview";
 import { Button } from "@/components/ui/button";
 import type {
   ContactPreviewDraft,
+  HomeFaqItemDraft,
   HomeFaqPreviewDraft,
 } from "@/lib/cms-preview";
 
-type LocaleBody = HomeFaqPreviewDraft;
+type LocaleItems = HomeFaqItemDraft[];
 type PreviewDraft = ContactPreviewDraft | HomeFaqPreviewDraft;
 
-const EMPTY: LocaleBody = {
-  intro: "",
-  whatWeDo: "",
-  requirements: "",
-  academy: "",
-  booking: "",
-  journal: "",
-  vision: "",
-  questionAbout: "",
-  questionWhatWeDo: "",
-  questionRequirements: "",
-  questionAcademy: "",
-  questionBooking: "",
-  questionJournal: "",
-};
+const EN_DEFAULT_ITEMS: LocaleItems = [
+  {
+    id: "default-en-about",
+    question: "VÈLISHE Model Management — Sofia, Bulgaria",
+    answer:
+      "VÈLISHE Model Management is a boutique modeling agency founded in 2025 and based in Sofia, Bulgaria. We represent and develop professional fashion and commercial models — women and men with a distinct presence, individual attitude, and authentic character that translates across editorial, campaign, and digital work. We are a new-generation agency built on the belief that great representation shapes careers. We work with a selective, carefully curated roster and invest in each model's long-term development — from first casting to international placement.",
+  },
+  {
+    id: "default-en-what-we-do",
+    question: "What Does Velishe Model Management Do?",
+    answer:
+      "Our talent works across 7 categories: fashion editorial, commercial advertising, catalogue, runway, beauty, lifestyle, and digital content. We connect models with leading Bulgarian and international brands, creative directors, and photographers — placing talent in campaigns that make an impact. Beyond bookings, we guide models through the industry — helping them build a professional portfolio, understand their market positioning, and navigate the demands of a modeling career with confidence and clarity.",
+  },
+  {
+    id: "default-en-vision",
+    question: "Our Vision",
+    answer:
+      "Our vision goes beyond trends. We focus on timeless presence, individuality, and a sense of narrative within every model we work with. VÈLISHE is a statement — selective, bold, and quietly assured. We exist to shape faces, stories, and moments that leave an imprint.",
+  },
+  {
+    id: "default-en-requirements",
+    question: "What Are the Requirements to Become a Velishe Model?",
+    answer:
+      "We represent both women and men. Female models typically begin at a minimum height of 173 cm; male models at 183 cm. We prioritise natural, unedited portfolios and look for real character above all else. Applicants submit natural photos with no filters, editing, or makeup and are reviewed on a rolling basis.",
+  },
+  {
+    id: "default-en-academy",
+    question: "What Is the VÈLISHE Model Academy?",
+    answer:
+      "The VÈLISHE Academy is our structured training programme for aspiring and signed talents who want to understand how the modeling industry truly works. The Academy covers composites and casting preparation, professional conduct on set, industry etiquette, and building a sustainable career. Enrolment is by intake — join the waitlist to be notified when the next programme opens.",
+  },
+  {
+    id: "default-en-booking",
+    question: "How Do You Book a Model or Apply to Velishe?",
+    answer:
+      "We welcome enquiries from clients looking to book talent for campaigns, editorials, and commercial productions. For casting requests, production briefs, or general booking enquiries, reach out directly to our team.",
+  },
+];
 
-const EN_DEFAULT_QUESTIONS = {
-  questionAbout: "VÈLISHE Model Management — Sofia, Bulgaria",
-  questionWhatWeDo: "What Does Velishe Model Management Do?",
-  questionRequirements: "What Are the Requirements to Become a Velishe Model?",
-  questionAcademy: "What Is the VÈLISHE Model Academy?",
-  questionBooking: "How Do You Book a Model or Apply to Velishe?",
-  questionJournal: "",
-};
-
-const BG_DEFAULT_QUESTIONS = {
-  questionAbout: "За VÈLISHE",
-  questionWhatWeDo: "Какво прави Velishe Model Management?",
-  questionRequirements: "Какви са изискванията да станеш модел в Velishe?",
-  questionAcademy: "Какво е VÈLISHE Model Academy?",
-  questionBooking: "Как да резервирате модел или да кандидатствате в Velishe?",
-  questionJournal: "Какво е Velishe Journal?",
-};
-
-function readLocale(raw: Record<string, unknown> | undefined): LocaleBody {
-  const str = (key: keyof LocaleBody) =>
-    typeof raw?.[key] === "string" ? (raw[key] as string) : "";
-  return {
-    intro: str("intro"),
-    whatWeDo: str("whatWeDo"),
-    requirements: str("requirements"),
-    academy: str("academy"),
-    booking: str("booking"),
-    journal: str("journal"),
-    vision: str("vision"),
-    questionAbout: str("questionAbout"),
-    questionWhatWeDo: str("questionWhatWeDo"),
-    questionRequirements: str("questionRequirements"),
-    questionAcademy: str("questionAcademy"),
-    questionBooking: str("questionBooking"),
-    questionJournal: str("questionJournal"),
-  };
+function hasUsableAnswers(items: LocaleItems): boolean {
+  return items.some((item) => item.answer.trim().length > 0);
 }
 
-function withQuestionDefaults(
+function readItems(raw: unknown): LocaleItems {
+  if (!Array.isArray(raw)) return [];
+  const out: LocaleItems = [];
+  for (const entry of raw) {
+    if (!entry || typeof entry !== "object") continue;
+    const o = entry as Record<string, unknown>;
+    const id = typeof o.id === "string" ? o.id : "";
+    if (!id) continue;
+    out.push({
+      id,
+      question: typeof o.question === "string" ? o.question : "",
+      answer: typeof o.answer === "string" ? o.answer : "",
+    });
+  }
+  return out;
+}
+
+function resolveLocaleItems(
   locale: "en" | "bg",
-  body: LocaleBody,
-): LocaleBody {
-  const defaults = locale === "en" ? EN_DEFAULT_QUESTIONS : BG_DEFAULT_QUESTIONS;
-  return {
-    ...body,
-    questionAbout: body.questionAbout.trim() || defaults.questionAbout,
-    questionWhatWeDo: body.questionWhatWeDo.trim() || defaults.questionWhatWeDo,
-    questionRequirements:
-      body.questionRequirements.trim() || defaults.questionRequirements,
-    questionAcademy: body.questionAcademy.trim() || defaults.questionAcademy,
-    questionBooking: body.questionBooking.trim() || defaults.questionBooking,
-    questionJournal: body.questionJournal.trim() || defaults.questionJournal,
-  };
+  content: { en: LocaleItems; bg: LocaleItems },
+): LocaleItems {
+  if (locale === "en") {
+    return hasUsableAnswers(content.en) ? content.en : EN_DEFAULT_ITEMS;
+  }
+  if (hasUsableAnswers(content.bg)) return content.bg;
+  return hasUsableAnswers(content.en) ? content.en : EN_DEFAULT_ITEMS;
 }
 
 function isHomeFaqDraft(draft: PreviewDraft): draft is HomeFaqPreviewDraft {
-  return "intro" in draft && !("intro1" in draft);
+  return "items" in draft && Array.isArray(draft.items);
+}
+
+function newItemId(): string {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return crypto.randomUUID();
+  }
+  return `faq-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
 export default function HomeFaqAdminPage() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [showPasswordDialog, setShowPasswordDialog] = useState(false);
   const [passwordDialogAutoUnlock, setPasswordDialogAutoUnlock] = useState(true);
-  const [content, setContent] = useState<{ en: LocaleBody; bg: LocaleBody }>({
-    en: { ...EMPTY },
-    bg: { ...EMPTY },
+  const [content, setContent] = useState<{ en: LocaleItems; bg: LocaleItems }>({
+    en: [],
+    bg: [],
   });
   const contentRef = useRef(content);
   contentRef.current = content;
@@ -110,9 +118,11 @@ export default function HomeFaqAdminPage() {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
   const [previewLocale, setPreviewLocale] = useState<"en" | "bg">("en");
+  const [contentVersion, setContentVersion] = useState(0);
+  const [contentReady, setContentReady] = useState(false);
 
-  const previewDraft = useMemo(
-    () => withQuestionDefaults(previewLocale, content[previewLocale]),
+  const previewDraft = useMemo<HomeFaqPreviewDraft>(
+    () => ({ items: resolveLocaleItems(previewLocale, content) }),
     [content, previewLocale],
   );
 
@@ -120,12 +130,14 @@ export default function HomeFaqAdminPage() {
     clearCachedPasswordHash();
     passwordHashRef.current = "";
     setIsAuthenticated(false);
+    setContentReady(false);
   }, []);
 
   const load = useCallback(
     async (hash: string) => {
       passwordHashRef.current = hash;
       setLoading(true);
+      setContentReady(false);
       setMessage("");
       try {
         const response = await fetch(
@@ -143,12 +155,14 @@ export default function HomeFaqAdminPage() {
         }
         const data = await response.json();
         const next = {
-          en: withQuestionDefaults("en", readLocale(data.content?.en)),
-          bg: withQuestionDefaults("bg", readLocale(data.content?.bg)),
+          en: readItems(data.content?.en),
+          bg: readItems(data.content?.bg),
         };
         setContent(next);
         contentRef.current = next;
         setIsAuthenticated(true);
+        setContentReady(true);
+        setContentVersion((version) => version + 1);
         return true;
       } catch {
         setMessage("Failed to load homepage FAQ content.");
@@ -204,10 +218,7 @@ export default function HomeFaqAdminPage() {
         if (iframeDraft && isHomeFaqDraft(iframeDraft)) {
           nextContent = {
             ...nextContent,
-            [previewLocale]: {
-              ...nextContent[previewLocale],
-              ...iframeDraft,
-            },
+            [previewLocale]: iframeDraft.items,
           };
           setContent(nextContent);
           contentRef.current = nextContent;
@@ -266,7 +277,6 @@ export default function HomeFaqAdminPage() {
       const pending = pendingDraftRef.current;
       pendingDraftRef.current = undefined;
       if (pending !== undefined) {
-        // One retry only — never reopen the dialog from this path (avoids flicker loop).
         const saved = await performSave(pending, { suppressAuthDialog: true });
         if (!saved) {
           setMessage("Signed in, but save failed. Click Save once more.");
@@ -281,19 +291,43 @@ export default function HomeFaqAdminPage() {
     setShowPasswordDialog(false);
   }, []);
 
-  const handlePatch = useCallback(
-    (locale: "en" | "bg", patch: Record<string, string>) => {
+  const handlePatch = useCallback((_locale: "en" | "bg", _patch: Record<string, string>) => {
+    // Contact-style string patches are unused for FAQ items.
+  }, []);
+
+  const handleItemsPatch = useCallback(
+    (locale: "en" | "bg", items: HomeFaqItemDraft[]) => {
       setContent((prev) => {
-        const next = {
-          ...prev,
-          [locale]: { ...prev[locale], ...patch },
-        };
+        const next = { ...prev, [locale]: items };
         contentRef.current = next;
         return next;
       });
     },
     [],
   );
+
+  const handleAddItem = useCallback(() => {
+    setContent((prev) => {
+      const current = resolveLocaleItems(previewLocale, prev);
+      const nextItems = [
+        ...current,
+        {
+          id: newItemId(),
+          question: "New question",
+          answer: "",
+        },
+      ];
+      const next = { ...prev, [previewLocale]: nextItems };
+      contentRef.current = next;
+      return next;
+    });
+    setContentVersion((version) => version + 1);
+  }, [previewLocale]);
+
+  const handleLocaleChange = useCallback((locale: "en" | "bg") => {
+    setPreviewLocale(locale);
+    setContentVersion((version) => version + 1);
+  }, []);
 
   const saveDisabled =
     !isAuthenticated || loading || showPasswordDialog || saving;
@@ -317,12 +351,16 @@ export default function HomeFaqAdminPage() {
         <CmsSitePreview
           page="home_faq"
           locale={previewLocale}
-          onLocaleChange={setPreviewLocale}
+          onLocaleChange={handleLocaleChange}
           draft={previewDraft}
+          contentReady={contentReady && isAuthenticated && !loading}
+          contentVersion={contentVersion}
           onSave={(iframeDraft) => performSave(iframeDraft)}
           saving={saving}
           disabled={saveDisabled}
           onPatch={handlePatch}
+          onItemsPatch={handleItemsPatch}
+          onAddItem={handleAddItem}
         />
       </div>
 

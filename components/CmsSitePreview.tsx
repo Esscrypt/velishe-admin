@@ -12,6 +12,7 @@ import {
   type CmsPreviewLocale,
   type CmsPreviewPage,
   type ContactPreviewDraft,
+  type HomeFaqItemDraft,
   type HomeFaqPreviewDraft,
 } from "@/lib/cms-preview";
 import { Button } from "@/components/ui/button";
@@ -27,7 +28,13 @@ type CmsSitePreviewProps = {
   locale: CmsPreviewLocale;
   onLocaleChange: (locale: CmsPreviewLocale) => void;
   draft: PreviewDraft;
+  /** When false, never PUSH — avoids wiping SSR answers with empty admin state. */
+  contentReady?: boolean;
+  /** Bump after load / locale switch so iframe resyncs once with real data. */
+  contentVersion?: number;
   onPatch: (locale: CmsPreviewLocale, patch: Record<string, string>) => void;
+  onItemsPatch?: (locale: CmsPreviewLocale, items: HomeFaqItemDraft[]) => void;
+  onAddItem?: () => void;
   onSave: (iframeDraft: PreviewDraft | null) => void;
   saving?: boolean;
   disabled?: boolean;
@@ -38,7 +45,11 @@ export default function CmsSitePreview({
   locale,
   onLocaleChange,
   draft,
+  contentReady = true,
+  contentVersion = 0,
   onPatch,
+  onItemsPatch,
+  onAddItem,
   onSave,
   saving = false,
   disabled = false,
@@ -49,6 +60,8 @@ export default function CmsSitePreview({
   draftRef.current = draft;
   const onPatchRef = useRef(onPatch);
   onPatchRef.current = onPatch;
+  const onItemsPatchRef = useRef(onItemsPatch);
+  onItemsPatchRef.current = onItemsPatch;
   const onSaveRef = useRef(onSave);
   onSaveRef.current = onSave;
   const saveLockRef = useRef(false);
@@ -86,8 +99,13 @@ export default function CmsSitePreview({
         ((data as { locale?: string }).locale === "en" ||
           (data as { locale?: string }).locale === "bg")
       ) {
-        const patch = (data as { patch?: Record<string, string> }).patch;
         const patchLocale = (data as { locale: CmsPreviewLocale }).locale;
+        const items = (data as { items?: HomeFaqItemDraft[] }).items;
+        if (Array.isArray(items) && onItemsPatchRef.current) {
+          onItemsPatchRef.current(patchLocale, items);
+          return;
+        }
+        const patch = (data as { patch?: Record<string, string> }).patch;
         if (patch) onPatchRef.current(patchLocale, patch);
       }
     };
@@ -97,7 +115,7 @@ export default function CmsSitePreview({
   }, [page]);
 
   useEffect(() => {
-    if (!iframeReady) return;
+    if (!iframeReady || !contentReady) return;
     const frame = iframeRef.current?.contentWindow;
     if (!frame) return;
     frame.postMessage(
@@ -109,7 +127,7 @@ export default function CmsSitePreview({
       },
       FE_URL,
     );
-  }, [iframeReady, page, locale]);
+  }, [iframeReady, contentReady, contentVersion, page, locale]);
 
   const requestFlush = useCallback((): Promise<PreviewDraft | null> => {
     const frame = iframeRef.current?.contentWindow;
@@ -184,6 +202,17 @@ export default function CmsSitePreview({
         >
           Bulgarian
         </Button>
+        {page === "home_faq" && onAddItem ? (
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={onAddItem}
+            disabled={disabled || !contentReady}
+          >
+            Add question
+          </Button>
+        ) : null}
         <a
           href={src}
           target="_blank"

@@ -9,20 +9,14 @@ export const CMS_PREVIEW_SNAPSHOT = "velishe-cms-preview-snapshot";
 export type CmsPreviewPage = "home_faq" | "contact";
 export type CmsPreviewLocale = "en" | "bg";
 
+export type HomeFaqItemDraft = {
+  id: string;
+  question: string;
+  answer: string;
+};
+
 export type HomeFaqPreviewDraft = {
-  intro: string;
-  whatWeDo: string;
-  requirements: string;
-  academy: string;
-  booking: string;
-  journal: string;
-  vision: string;
-  questionAbout: string;
-  questionWhatWeDo: string;
-  questionRequirements: string;
-  questionAcademy: string;
-  questionBooking: string;
-  questionJournal: string;
+  items: HomeFaqItemDraft[];
 };
 
 export type ContactPreviewDraft = {
@@ -43,7 +37,8 @@ export type CmsPreviewPatchMessage = {
   type: typeof CMS_PREVIEW_PATCH;
   page: CmsPreviewPage;
   locale: CmsPreviewLocale;
-  patch: Record<string, string>;
+  patch?: Record<string, string>;
+  items?: HomeFaqItemDraft[];
 };
 
 export type CmsPreviewReadyMessage = {

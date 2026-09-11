@@ -145,40 +145,18 @@ export const contactPageContent = pgTable("contact_page_content", {
   updatedAt: timestamp("updated_at").notNull(),
 });
 
-/** Homepage FAQ / about copy overrides (EN + BG). Blank → public site defaults. */
-export const homeFaqContent = pgTable("home_faq_content", {
+/** Dynamic homepage FAQ items (one row per Q&A per locale). */
+export const homeFaqItems = pgTable("home_faq_items", {
   id: text("id").primaryKey(),
-  introEn: text("intro_en").notNull(),
-  whatWeDoEn: text("what_we_do_en").notNull(),
-  requirementsEn: text("requirements_en").notNull(),
-  academyEn: text("academy_en").notNull(),
-  bookingEn: text("booking_en").notNull(),
-  journalEn: text("journal_en").notNull(),
-  visionEn: text("vision_en").notNull(),
-  questionAboutEn: text("question_about_en").notNull(),
-  questionWhatWeDoEn: text("question_what_we_do_en").notNull(),
-  questionRequirementsEn: text("question_requirements_en").notNull(),
-  questionAcademyEn: text("question_academy_en").notNull(),
-  questionBookingEn: text("question_booking_en").notNull(),
-  questionJournalEn: text("question_journal_en").notNull(),
-  introBg: text("intro_bg").notNull(),
-  whatWeDoBg: text("what_we_do_bg").notNull(),
-  requirementsBg: text("requirements_bg").notNull(),
-  academyBg: text("academy_bg").notNull(),
-  bookingBg: text("booking_bg").notNull(),
-  journalBg: text("journal_bg").notNull(),
-  visionBg: text("vision_bg").notNull(),
-  questionAboutBg: text("question_about_bg").notNull(),
-  questionWhatWeDoBg: text("question_what_we_do_bg").notNull(),
-  questionRequirementsBg: text("question_requirements_bg").notNull(),
-  questionAcademyBg: text("question_academy_bg").notNull(),
-  questionBookingBg: text("question_booking_bg").notNull(),
-  questionJournalBg: text("question_journal_bg").notNull(),
+  locale: text("locale").notNull(),
+  sortOrder: integer("sort_order").notNull(),
+  question: text("question").notNull(),
+  answer: text("answer").notNull(),
   updatedAt: timestamp("updated_at").notNull(),
 });
 
 export type ContactPageContentRow = typeof contactPageContent.$inferSelect;
 export type ContactPageContentInsert = typeof contactPageContent.$inferInsert;
-export type HomeFaqContentRow = typeof homeFaqContent.$inferSelect;
-export type HomeFaqContentInsert = typeof homeFaqContent.$inferInsert;
+export type HomeFaqItemRow = typeof homeFaqItems.$inferSelect;
+export type HomeFaqItemInsert = typeof homeFaqItems.$inferInsert;
 
