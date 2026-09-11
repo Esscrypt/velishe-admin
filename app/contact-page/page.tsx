@@ -9,7 +9,6 @@ import PasswordDialog, {
 } from "@/components/PasswordDialog";
 import CmsSitePreview from "@/components/CmsSitePreview";
 import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
 import type { ContactPreviewDraft } from "@/lib/cms-preview";
 
 type LocaleBody = ContactPreviewDraft;
@@ -29,38 +28,6 @@ const EN_DEFAULTS: LocaleBody = {
   companyHeading: "Velishe Model Management Ltd.",
   officeAddress: "Sofia, Bulgaria",
 };
-
-const FIELDS: Array<{
-  key: keyof LocaleBody;
-  label: string;
-  hint: string;
-  rows: number;
-}> = [
-  {
-    key: "intro1",
-    label: "Opening paragraph",
-    hint: "Top of Contact — under the heading",
-    rows: 4,
-  },
-  {
-    key: "intro2",
-    label: "Second paragraph",
-    hint: "Under the opening paragraph, before the company card",
-    rows: 4,
-  },
-  {
-    key: "companyHeading",
-    label: "Company card title",
-    hint: "Grey box heading",
-    rows: 1,
-  },
-  {
-    key: "officeAddress",
-    label: "Office address",
-    hint: "Inside the company card",
-    rows: 1,
-  },
-];
 
 function pickFilled(value: string, fallback: string): string {
   const trimmed = value.trim();
@@ -120,6 +87,7 @@ export default function ContactContentAdminPage() {
       if (response.status === 401) {
         clearCachedPasswordHash();
         setIsAuthenticated(false);
+        setPasswordHash("");
         setShowPasswordDialog(true);
         return;
       }
@@ -166,7 +134,16 @@ export default function ContactContentAdminPage() {
   }, []);
 
   const save = async () => {
-    if (!passwordHash) return;
+    const hash =
+      passwordHash.trim() ||
+      (await getVerifiedCachedPasswordHash()) ||
+      "";
+    if (!hash) {
+      setShowPasswordDialog(true);
+      setMessage("Enter the admin password to save.");
+      return;
+    }
+    setPasswordHash(hash);
     setSaving(true);
     setMessage("");
     try {
@@ -177,10 +154,19 @@ export default function ContactContentAdminPage() {
       const response = await fetch("/api/site-content/contact", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ passwordHash, content: payload }),
+        body: JSON.stringify({ passwordHash: hash, content: payload }),
       });
       if (!response.ok) {
-        setMessage("Save failed.");
+        const err = (await response.json().catch(() => null)) as {
+          error?: string;
+        } | null;
+        if (response.status === 401) {
+          clearCachedPasswordHash();
+          setIsAuthenticated(false);
+          setPasswordHash("");
+          setShowPasswordDialog(true);
+        }
+        setMessage(err?.error ?? "Save failed.");
         return;
       }
       setMessage("Saved. Public contact pages will refresh shortly.");
@@ -189,17 +175,6 @@ export default function ContactContentAdminPage() {
     } finally {
       setSaving(false);
     }
-  };
-
-  const updateField = (
-    locale: "en" | "bg",
-    key: keyof LocaleBody,
-    value: string,
-  ) => {
-    setContent((prev) => ({
-      ...prev,
-      [locale]: { ...prev[locale], [key]: value },
-    }));
   };
 
   return (
@@ -235,38 +210,6 @@ export default function ContactContentAdminPage() {
             }));
           }}
         />
-
-        <p className="text-sm text-gray-600">
-          Optional form fields below if you prefer typing outside the iframe.
-          Email / social / legal stay fixed.
-        </p>
-
-        {(["en", "bg"] as const).map((locale) => (
-          <section
-            key={locale}
-            className="space-y-5 rounded-lg border bg-white p-6"
-          >
-            <h2 className="text-xl font-semibold uppercase tracking-wide">
-              {locale === "en" ? "English" : "Bulgarian"}
-            </h2>
-            {FIELDS.map((field) => (
-              <div key={`${locale}-${field.key}`} className="space-y-1">
-                <Label htmlFor={`${locale}-${field.key}`}>{field.label}</Label>
-                <p className="text-xs text-gray-500">{field.hint}</p>
-                <textarea
-                  id={`${locale}-${field.key}`}
-                  className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
-                  rows={field.rows}
-                  value={content[locale][field.key]}
-                  onChange={(e) =>
-                    updateField(locale, field.key, e.target.value)
-                  }
-                  disabled={!isAuthenticated}
-                />
-              </div>
-            ))}
-          </section>
-        ))}
       </div>
 
       <PasswordDialog

@@ -13,12 +13,9 @@ import {
   type HomeFaqPreviewDraft,
 } from "@/lib/cms-preview";
 import { Button } from "@/components/ui/button";
+import { getUserFeUrlOrProductionFallback } from "@/lib/user-fe-url";
 
-const FE_URL = (
-  process.env.NEXT_PUBLIC_USER_FE_URL ||
-  process.env.NEXT_PUBLIC_APP_URL ||
-  "http://localhost:3000"
-).replace(/\/$/, "");
+const FE_URL = getUserFeUrlOrProductionFallback();
 
 type CmsSitePreviewProps = {
   page: CmsPreviewPage;

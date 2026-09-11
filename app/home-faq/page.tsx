@@ -9,7 +9,6 @@ import PasswordDialog, {
 } from "@/components/PasswordDialog";
 import CmsSitePreview from "@/components/CmsSitePreview";
 import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
 import type { HomeFaqPreviewDraft } from "@/lib/cms-preview";
 
 type LocaleBody = HomeFaqPreviewDraft;
@@ -47,85 +46,6 @@ const BG_DEFAULT_QUESTIONS = {
   questionBooking: "Как да резервирате модел или да кандидатствате в Velishe?",
   questionJournal: "Какво е Velishe Journal?",
 };
-
-const EN_ANSWER_FIELDS: Array<{
-  answerKey: keyof LocaleBody;
-  questionKey: keyof LocaleBody;
-  hint: string;
-}> = [
-  {
-    answerKey: "intro",
-    questionKey: "questionAbout",
-    hint: "About accordion body",
-  },
-  {
-    answerKey: "whatWeDo",
-    questionKey: "questionWhatWeDo",
-    hint: "What we do accordion body",
-  },
-  {
-    answerKey: "vision",
-    questionKey: "questionRequirements",
-    hint: "Vision paragraph inside Requirements",
-  },
-  {
-    answerKey: "requirements",
-    questionKey: "questionRequirements",
-    hint: "Requirements paragraph (same accordion)",
-  },
-  {
-    answerKey: "academy",
-    questionKey: "questionAcademy",
-    hint: "Academy accordion body",
-  },
-  {
-    answerKey: "booking",
-    questionKey: "questionBooking",
-    hint: "Booking accordion body",
-  },
-];
-
-const BG_ANSWER_FIELDS: Array<{
-  answerKey: keyof LocaleBody;
-  questionKey: keyof LocaleBody;
-  hint: string;
-}> = [
-  {
-    answerKey: "intro",
-    questionKey: "questionAbout",
-    hint: "About accordion body",
-  },
-  {
-    answerKey: "whatWeDo",
-    questionKey: "questionWhatWeDo",
-    hint: "What we do accordion body",
-  },
-  {
-    answerKey: "requirements",
-    questionKey: "questionRequirements",
-    hint: "Requirements accordion body",
-  },
-  {
-    answerKey: "academy",
-    questionKey: "questionAcademy",
-    hint: "Academy accordion body",
-  },
-  {
-    answerKey: "journal",
-    questionKey: "questionJournal",
-    hint: "Journal accordion body",
-  },
-  {
-    answerKey: "booking",
-    questionKey: "questionBooking",
-    hint: "Booking accordion body",
-  },
-  {
-    answerKey: "vision",
-    questionKey: "questionRequirements",
-    hint: "Optional vision paragraph",
-  },
-];
 
 function readLocale(raw: Record<string, unknown> | undefined): LocaleBody {
   const str = (key: keyof LocaleBody) =>
@@ -192,6 +112,7 @@ export default function HomeFaqAdminPage() {
       if (response.status === 401) {
         clearCachedPasswordHash();
         setIsAuthenticated(false);
+        setPasswordHash("");
         setShowPasswordDialog(true);
         return;
       }
@@ -222,17 +143,35 @@ export default function HomeFaqAdminPage() {
   }, []);
 
   const save = async () => {
-    if (!passwordHash) return;
+    const hash =
+      passwordHash.trim() ||
+      (await getVerifiedCachedPasswordHash()) ||
+      "";
+    if (!hash) {
+      setShowPasswordDialog(true);
+      setMessage("Enter the admin password to save.");
+      return;
+    }
+    setPasswordHash(hash);
     setSaving(true);
     setMessage("");
     try {
       const response = await fetch("/api/site-content/home-faq", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ passwordHash, content }),
+        body: JSON.stringify({ passwordHash: hash, content }),
       });
       if (!response.ok) {
-        setMessage("Save failed.");
+        const err = (await response.json().catch(() => null)) as {
+          error?: string;
+        } | null;
+        if (response.status === 401) {
+          clearCachedPasswordHash();
+          setIsAuthenticated(false);
+          setPasswordHash("");
+          setShowPasswordDialog(true);
+        }
+        setMessage(err?.error ?? "Save failed.");
         return;
       }
       setMessage("Saved. Homepage FAQ will refresh shortly.");
@@ -241,74 +180,6 @@ export default function HomeFaqAdminPage() {
     } finally {
       setSaving(false);
     }
-  };
-
-  const updateField = (
-    locale: "en" | "bg",
-    key: keyof LocaleBody,
-    value: string,
-  ) => {
-    setContent((prev) => ({
-      ...prev,
-      [locale]: { ...prev[locale], [key]: value },
-    }));
-  };
-
-  const renderLocaleEditor = (
-    locale: "en" | "bg",
-    fields: typeof EN_ANSWER_FIELDS,
-  ) => {
-    const seenQuestions = new Set<string>();
-    return (
-      <section className="space-y-5 rounded-lg border bg-white p-6">
-        <h2 className="text-xl font-semibold">
-          {locale === "en" ? "English" : "Bulgarian"}
-        </h2>
-        {fields.map((field) => {
-          const showQuestion = !seenQuestions.has(field.questionKey);
-          seenQuestions.add(field.questionKey);
-          return (
-            <div key={`${locale}-${field.answerKey}`} className="space-y-2">
-              {showQuestion ? (
-                <div className="space-y-1">
-                  <Label htmlFor={`${locale}-${field.questionKey}`}>
-                    Question title
-                  </Label>
-                  <input
-                    id={`${locale}-${field.questionKey}`}
-                    className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm font-medium"
-                    value={content[locale][field.questionKey]}
-                    onChange={(e) =>
-                      updateField(locale, field.questionKey, e.target.value)
-                    }
-                    disabled={!isAuthenticated}
-                  />
-                </div>
-              ) : null}
-              <div className="space-y-1">
-                <Label htmlFor={`${locale}-${field.answerKey}`}>Answer</Label>
-                <p className="text-xs text-gray-500">{field.hint}</p>
-                <textarea
-                  id={`${locale}-${field.answerKey}`}
-                  className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
-                  rows={5}
-                  value={content[locale][field.answerKey]}
-                  onChange={(e) =>
-                    updateField(locale, field.answerKey, e.target.value)
-                  }
-                  disabled={!isAuthenticated}
-                  placeholder={
-                    locale === "bg"
-                      ? "Empty → English on /bg/ until filled"
-                      : undefined
-                  }
-                />
-              </div>
-            </div>
-          );
-        })}
-      </section>
-    );
   };
 
   return (
@@ -344,13 +215,6 @@ export default function HomeFaqAdminPage() {
             }));
           }}
         />
-
-        <p className="text-sm text-gray-600">
-          Optional form fields below if you prefer typing outside the iframe.
-        </p>
-
-        {renderLocaleEditor("en", EN_ANSWER_FIELDS)}
-        {renderLocaleEditor("bg", BG_ANSWER_FIELDS)}
       </div>
 
       <PasswordDialog

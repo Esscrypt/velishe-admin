@@ -19,6 +19,15 @@ test("isAllowedUserFeUrl allows vercel previews", () => {
   ).toBe(true);
 });
 
+test("isAllowedUserFeUrl rejects admin deployments", () => {
+  expect(isAllowedUserFeUrl("https://velishe-admin.vercel.app")).toBe(false);
+  expect(
+    isAllowedUserFeUrl(
+      "https://velishe-admin-git-feat-blog-and-mailing-list.vercel.app",
+    ),
+  ).toBe(false);
+});
+
 test("getUserFeUrl prefers override", () => {
   expect(
     getUserFeUrl("https://velishe-git-feat-blog-and-mailing-list.vercel.app"),

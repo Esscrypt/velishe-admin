@@ -16,6 +16,11 @@ export function isAllowedUserFeUrl(url: string): boolean {
       return true;
     }
 
+    // Never treat the admin deployment as the public site.
+    if (host.includes("velishe-admin") || host.startsWith("admin.")) {
+      return false;
+    }
+
     return (
       host.endsWith("velishemodelmanagement.com") ||
       host.endsWith(".vercel.app") ||
@@ -27,11 +32,11 @@ export function isAllowedUserFeUrl(url: string): boolean {
 }
 
 export function getUserFeUrl(override?: string | null): string | null {
+  // Do not use NEXT_PUBLIC_APP_URL — on the admin app that is this origin.
   const candidates = [
     override,
     process.env.USER_FE_URL,
     process.env.NEXT_PUBLIC_USER_FE_URL,
-    process.env.NEXT_PUBLIC_APP_URL,
   ];
 
   for (const raw of candidates) {
