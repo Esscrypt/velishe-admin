@@ -13,13 +13,6 @@ import {
   type HomeFaqPreviewDraft,
 } from "@/lib/cms-preview";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 
 const FE_URL = (
   process.env.NEXT_PUBLIC_USER_FE_URL ||
@@ -28,23 +21,25 @@ const FE_URL = (
 ).replace(/\/$/, "");
 
 type CmsSitePreviewProps = {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
   page: CmsPreviewPage;
   locale: CmsPreviewLocale;
   onLocaleChange: (locale: CmsPreviewLocale) => void;
   draft: HomeFaqPreviewDraft | ContactPreviewDraft;
   onPatch: (locale: CmsPreviewLocale, patch: Record<string, string>) => void;
+  onSave: () => void;
+  saving?: boolean;
+  disabled?: boolean;
 };
 
 export default function CmsSitePreview({
-  open,
-  onOpenChange,
   page,
   locale,
   onLocaleChange,
   draft,
   onPatch,
+  onSave,
+  saving = false,
+  disabled = false,
 }: CmsSitePreviewProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [iframeReady, setIframeReady] = useState(false);
@@ -53,11 +48,6 @@ export default function CmsSitePreview({
   const src = `${FE_URL}${path}`;
 
   useEffect(() => {
-    if (!open) {
-      setIframeReady(false);
-      return;
-    }
-
     const onMessage = (event: MessageEvent) => {
       if (!isTrustedCmsPreviewOrigin(event.origin)) return;
       const data = event.data;
@@ -83,10 +73,10 @@ export default function CmsSitePreview({
 
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, [open, onPatch, page]);
+  }, [onPatch, page]);
 
   useEffect(() => {
-    if (!open || !iframeReady) return;
+    if (!iframeReady) return;
     const frame = iframeRef.current?.contentWindow;
     if (!frame) return;
     frame.postMessage(
@@ -98,56 +88,60 @@ export default function CmsSitePreview({
       },
       FE_URL,
     );
-  }, [open, iframeReady, page, locale, draft]);
+  }, [iframeReady, page, locale, draft]);
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex h-[90vh] max-h-[90vh] w-[95vw] max-w-6xl flex-col gap-3 overflow-hidden">
-        <DialogHeader>
-          <DialogTitle>Live site preview</DialogTitle>
-          <DialogDescription>
-            Real {FE_URL} page in an iframe. Click question titles or body text
-            to edit in place. Changes sync into the form; Save to persist.
-          </DialogDescription>
-        </DialogHeader>
-        <div className="flex flex-wrap items-center gap-2">
-          <Button
-            size="sm"
-            variant={locale === "en" ? "default" : "outline"}
-            onClick={() => {
-              setIframeReady(false);
-              onLocaleChange("en");
-            }}
-          >
-            English
-          </Button>
-          <Button
-            size="sm"
-            variant={locale === "bg" ? "default" : "outline"}
-            onClick={() => {
-              setIframeReady(false);
-              onLocaleChange("bg");
-            }}
-          >
-            Bulgarian
-          </Button>
-          <a
-            href={src}
-            target="_blank"
-            rel="noreferrer"
-            className="ml-auto text-xs text-gray-500 underline"
-          >
-            Open in new tab
-          </a>
-        </div>
-        <iframe
-          key={src}
-          ref={iframeRef}
-          title="CMS site preview"
-          src={src}
-          className="min-h-0 w-full flex-1 rounded-md border border-gray-200 bg-white"
-        />
-      </DialogContent>
-    </Dialog>
+    <section className="flex min-h-[70vh] flex-col gap-3 rounded-lg border bg-white p-4">
+      <div className="flex flex-wrap items-center gap-2">
+        <Button
+          size="sm"
+          variant={locale === "en" ? "default" : "outline"}
+          onClick={() => {
+            setIframeReady(false);
+            onLocaleChange("en");
+          }}
+          disabled={disabled}
+        >
+          English
+        </Button>
+        <Button
+          size="sm"
+          variant={locale === "bg" ? "default" : "outline"}
+          onClick={() => {
+            setIframeReady(false);
+            onLocaleChange("bg");
+          }}
+          disabled={disabled}
+        >
+          Bulgarian
+        </Button>
+        <a
+          href={src}
+          target="_blank"
+          rel="noreferrer"
+          className="text-xs text-gray-500 underline"
+        >
+          Open in new tab
+        </a>
+        <Button
+          className="ml-auto"
+          onClick={onSave}
+          disabled={disabled || saving}
+        >
+          {saving ? "Saving…" : "Save"}
+        </Button>
+      </div>
+      <p className="text-xs text-gray-500">
+        Live {FE_URL} page. Click titles or body text in the iframe to edit.
+        Changes sync here; Save to persist.
+      </p>
+      <iframe
+        key={src}
+        ref={iframeRef}
+        title="CMS site preview"
+        src={src}
+        className="min-h-[65vh] w-full flex-1 rounded-md border border-gray-200 bg-white"
+      />
+    </section>
   );
 }

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Eye } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import PasswordDialog, {
   clearCachedPasswordHash,
   getVerifiedCachedPasswordHash,
@@ -103,7 +103,6 @@ export default function ContactContentAdminPage() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
-  const [previewOpen, setPreviewOpen] = useState(false);
   const [previewLocale, setPreviewLocale] = useState<"en" | "bg">("en");
 
   const previewDraft = useMemo(
@@ -205,62 +204,51 @@ export default function ContactContentAdminPage() {
 
   return (
     <div className="min-h-screen bg-gray-50 p-8">
-      <div className="mx-auto max-w-4xl space-y-8">
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <Link href="/">
-              <Button variant="outline" size="sm">
-                <ArrowLeft className="h-4 w-4" />
-                Models
-              </Button>
-            </Link>
-            <h1 className="text-3xl font-bold">Contact page copy</h1>
-          </div>
-          <div className="flex gap-2">
-            <Button
-              variant="outline"
-              onClick={() => setPreviewOpen(true)}
-              disabled={!isAuthenticated || loading}
-            >
-              <Eye className="h-4 w-4" />
-              Live preview
+      <div className="mx-auto max-w-6xl space-y-8">
+        <div className="flex flex-wrap items-center gap-3">
+          <Link href="/">
+            <Button variant="outline" size="sm">
+              <ArrowLeft className="h-4 w-4" />
+              Models
             </Button>
-            <Button onClick={save} disabled={!isAuthenticated || saving || loading}>
-              {saving ? "Saving…" : "Save"}
-            </Button>
-          </div>
+          </Link>
+          <h1 className="text-3xl font-bold">Contact page copy</h1>
         </div>
-
-        <p className="text-sm text-gray-600">
-          Live preview opens the real Contact page. Click text in the iframe to
-          edit in place. Email / social / legal stay fixed.
-        </p>
 
         {message ? <p className="text-sm text-gray-800">{message}</p> : null}
         {loading ? <p className="text-sm text-gray-500">Loading…</p> : null}
+
+        <CmsSitePreview
+          page="contact"
+          locale={previewLocale}
+          onLocaleChange={setPreviewLocale}
+          draft={previewDraft}
+          onSave={() => {
+            void save();
+          }}
+          saving={saving}
+          disabled={!isAuthenticated || loading}
+          onPatch={(locale, patch) => {
+            setContent((prev) => ({
+              ...prev,
+              [locale]: { ...prev[locale], ...patch },
+            }));
+          }}
+        />
+
+        <p className="text-sm text-gray-600">
+          Optional form fields below if you prefer typing outside the iframe.
+          Email / social / legal stay fixed.
+        </p>
 
         {(["en", "bg"] as const).map((locale) => (
           <section
             key={locale}
             className="space-y-5 rounded-lg border bg-white p-6"
           >
-            <div className="flex items-center justify-between gap-3">
-              <h2 className="text-xl font-semibold uppercase tracking-wide">
-                {locale === "en" ? "English" : "Bulgarian"}
-              </h2>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  setPreviewLocale(locale);
-                  setPreviewOpen(true);
-                }}
-                disabled={!isAuthenticated}
-              >
-                <Eye className="h-4 w-4" />
-                Preview {locale.toUpperCase()}
-              </Button>
-            </div>
+            <h2 className="text-xl font-semibold uppercase tracking-wide">
+              {locale === "en" ? "English" : "Bulgarian"}
+            </h2>
             {FIELDS.map((field) => (
               <div key={`${locale}-${field.key}`} className="space-y-1">
                 <Label htmlFor={`${locale}-${field.key}`}>{field.label}</Label>
@@ -280,21 +268,6 @@ export default function ContactContentAdminPage() {
           </section>
         ))}
       </div>
-
-      <CmsSitePreview
-        open={previewOpen}
-        onOpenChange={setPreviewOpen}
-        page="contact"
-        locale={previewLocale}
-        onLocaleChange={setPreviewLocale}
-        draft={previewDraft}
-        onPatch={(locale, patch) => {
-          setContent((prev) => ({
-            ...prev,
-            [locale]: { ...prev[locale], ...patch },
-          }));
-        }}
-      />
 
       <PasswordDialog
         open={showPasswordDialog}
