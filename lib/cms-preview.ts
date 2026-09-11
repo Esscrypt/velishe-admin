@@ -3,6 +3,8 @@ export const CMS_PREVIEW_QUERY = "cmsPreview";
 export const CMS_PREVIEW_READY = "velishe-cms-preview-ready";
 export const CMS_PREVIEW_PUSH = "velishe-cms-preview-push";
 export const CMS_PREVIEW_PATCH = "velishe-cms-preview-patch";
+export const CMS_PREVIEW_FLUSH = "velishe-cms-preview-flush";
+export const CMS_PREVIEW_SNAPSHOT = "velishe-cms-preview-snapshot";
 
 export type CmsPreviewPage = "home_faq" | "contact";
 export type CmsPreviewLocale = "en" | "bg";
@@ -49,6 +51,19 @@ export type CmsPreviewReadyMessage = {
   page: CmsPreviewPage;
 };
 
+export type CmsPreviewFlushMessage = {
+  type: typeof CMS_PREVIEW_FLUSH;
+  page: CmsPreviewPage;
+  locale: CmsPreviewLocale;
+};
+
+export type CmsPreviewSnapshotMessage = {
+  type: typeof CMS_PREVIEW_SNAPSHOT;
+  page: CmsPreviewPage;
+  locale: CmsPreviewLocale;
+  draft: HomeFaqPreviewDraft | ContactPreviewDraft;
+};
+
 export function isTrustedCmsPreviewOrigin(origin: string): boolean {
   try {
     const { hostname, protocol } = new URL(origin);
@@ -60,6 +75,20 @@ export function isTrustedCmsPreviewOrigin(origin: string): boolean {
   } catch {
     return false;
   }
+}
+
+export function isCmsPreviewSnapshot(
+  data: unknown,
+): data is CmsPreviewSnapshotMessage {
+  if (!data || typeof data !== "object") return false;
+  const message = data as Partial<CmsPreviewSnapshotMessage>;
+  return (
+    message.type === CMS_PREVIEW_SNAPSHOT &&
+    (message.page === "home_faq" || message.page === "contact") &&
+    (message.locale === "en" || message.locale === "bg") &&
+    !!message.draft &&
+    typeof message.draft === "object"
+  );
 }
 
 export function homeFaqPreviewPath(locale: CmsPreviewLocale): string {

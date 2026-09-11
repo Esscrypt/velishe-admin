@@ -1,15 +1,19 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import PasswordDialog, {
   clearCachedPasswordHash,
+  getCachedPasswordHash,
   getVerifiedCachedPasswordHash,
 } from "@/components/PasswordDialog";
 import CmsSitePreview from "@/components/CmsSitePreview";
 import { Button } from "@/components/ui/button";
-import type { ContactPreviewDraft } from "@/lib/cms-preview";
+import type {
+  ContactPreviewDraft,
+  HomeFaqPreviewDraft,
+} from "@/lib/cms-preview";
 
 type LocaleBody = ContactPreviewDraft;
 
@@ -59,6 +63,12 @@ function resolveDraft(
   };
 }
 
+function isContactDraft(
+  draft: ContactPreviewDraft | HomeFaqPreviewDraft,
+): draft is ContactPreviewDraft {
+  return "intro1" in draft;
+}
+
 export default function ContactContentAdminPage() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [passwordHash, setPasswordHash] = useState("");
@@ -67,17 +77,25 @@ export default function ContactContentAdminPage() {
     en: { ...EMPTY },
     bg: { ...EMPTY },
   });
+  const contentRef = useRef(content);
+  contentRef.current = content;
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
   const [previewLocale, setPreviewLocale] = useState<"en" | "bg">("en");
+  const loadedRef = useRef(false);
 
   const previewDraft = useMemo(
     () => resolveDraft(previewLocale, content),
     [previewLocale, content],
   );
 
-  const load = async (hash: string) => {
+  const load = useCallback(async (hash: string, opts?: { force?: boolean }) => {
+    if (loadedRef.current && !opts?.force) {
+      setIsAuthenticated(true);
+      setPasswordHash(hash);
+      return;
+    }
     setLoading(true);
     setMessage("");
     try {
@@ -88,6 +106,7 @@ export default function ContactContentAdminPage() {
         clearCachedPasswordHash();
         setIsAuthenticated(false);
         setPasswordHash("");
+        loadedRef.current = false;
         setShowPasswordDialog(true);
         return;
       }
@@ -98,7 +117,7 @@ export default function ContactContentAdminPage() {
       const data = await response.json();
       const enRaw = data.content?.en ?? {};
       const bgRaw = data.content?.bg ?? {};
-      setContent({
+      const next = {
         en: {
           intro1: typeof enRaw.intro1 === "string" ? enRaw.intro1 : "",
           intro2: typeof enRaw.intro2 === "string" ? enRaw.intro2 : "",
@@ -115,7 +134,10 @@ export default function ContactContentAdminPage() {
           officeAddress:
             typeof bgRaw.officeAddress === "string" ? bgRaw.officeAddress : "",
         },
-      });
+      };
+      setContent(next);
+      contentRef.current = next;
+      loadedRef.current = true;
       setIsAuthenticated(true);
       setPasswordHash(hash);
     } catch {
@@ -123,7 +145,7 @@ export default function ContactContentAdminPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     void (async () => {
@@ -131,11 +153,14 @@ export default function ContactContentAdminPage() {
       if (cached) await load(cached);
       else setShowPasswordDialog(true);
     })();
-  }, []);
+  }, [load]);
 
-  const save = async () => {
+  const save = async (
+    iframeDraft: ContactPreviewDraft | HomeFaqPreviewDraft | null,
+  ) => {
     const hash =
       passwordHash.trim() ||
+      getCachedPasswordHash() ||
       (await getVerifiedCachedPasswordHash()) ||
       "";
     if (!hash) {
@@ -144,12 +169,26 @@ export default function ContactContentAdminPage() {
       return;
     }
     setPasswordHash(hash);
+
+    let nextContent = contentRef.current;
+    if (iframeDraft && isContactDraft(iframeDraft)) {
+      nextContent = {
+        ...nextContent,
+        [previewLocale]: {
+          ...nextContent[previewLocale],
+          ...iframeDraft,
+        },
+      };
+      setContent(nextContent);
+      contentRef.current = nextContent;
+    }
+
     setSaving(true);
     setMessage("");
     try {
       const payload = {
-        en: { ...content.en, intro3: "", intro4: "" },
-        bg: { ...content.bg, intro3: "", intro4: "" },
+        en: { ...nextContent.en, intro3: "", intro4: "" },
+        bg: { ...nextContent.bg, intro3: "", intro4: "" },
       };
       const response = await fetch("/api/site-content/contact", {
         method: "PUT",
@@ -177,6 +216,32 @@ export default function ContactContentAdminPage() {
     }
   };
 
+  const handlePasswordSuccess = useCallback(
+    (hash: string) => {
+      void load(hash);
+      setShowPasswordDialog(false);
+    },
+    [load],
+  );
+
+  const handlePasswordClose = useCallback(() => {
+    setShowPasswordDialog(false);
+  }, []);
+
+  const handlePatch = useCallback(
+    (locale: "en" | "bg", patch: Record<string, string>) => {
+      setContent((prev) => {
+        const next = {
+          ...prev,
+          [locale]: { ...prev[locale], ...patch },
+        };
+        contentRef.current = next;
+        return next;
+      });
+    },
+    [],
+  );
+
   return (
     <div className="min-h-screen bg-gray-50 p-8">
       <div className="mx-auto max-w-6xl space-y-8">
@@ -198,29 +263,21 @@ export default function ContactContentAdminPage() {
           locale={previewLocale}
           onLocaleChange={setPreviewLocale}
           draft={previewDraft}
-          onSave={() => {
-            void save();
+          onSave={(iframeDraft) => {
+            void save(iframeDraft);
           }}
           saving={saving}
           disabled={!isAuthenticated || loading}
-          onPatch={(locale, patch) => {
-            setContent((prev) => ({
-              ...prev,
-              [locale]: { ...prev[locale], ...patch },
-            }));
-          }}
+          onPatch={handlePatch}
         />
       </div>
 
       <PasswordDialog
         open={showPasswordDialog}
-        onClose={() => setShowPasswordDialog(false)}
+        onClose={handlePasswordClose}
         title="Contact page"
         description="Enter admin password to edit contact copy."
-        onSuccess={(hash) => {
-          void load(hash);
-          setShowPasswordDialog(false);
-        }}
+        onSuccess={handlePasswordSuccess}
       />
     </div>
   );

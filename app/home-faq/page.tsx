@@ -1,15 +1,19 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import PasswordDialog, {
   clearCachedPasswordHash,
+  getCachedPasswordHash,
   getVerifiedCachedPasswordHash,
 } from "@/components/PasswordDialog";
 import CmsSitePreview from "@/components/CmsSitePreview";
 import { Button } from "@/components/ui/button";
-import type { HomeFaqPreviewDraft } from "@/lib/cms-preview";
+import type {
+  ContactPreviewDraft,
+  HomeFaqPreviewDraft,
+} from "@/lib/cms-preview";
 
 type LocaleBody = HomeFaqPreviewDraft;
 
@@ -84,6 +88,12 @@ function withQuestionDefaults(
   };
 }
 
+function isHomeFaqDraft(
+  draft: ContactPreviewDraft | HomeFaqPreviewDraft,
+): draft is HomeFaqPreviewDraft {
+  return "intro" in draft && !("intro1" in draft);
+}
+
 export default function HomeFaqAdminPage() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [passwordHash, setPasswordHash] = useState("");
@@ -92,17 +102,25 @@ export default function HomeFaqAdminPage() {
     en: { ...EMPTY },
     bg: { ...EMPTY },
   });
+  const contentRef = useRef(content);
+  contentRef.current = content;
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
   const [previewLocale, setPreviewLocale] = useState<"en" | "bg">("en");
+  const loadedRef = useRef(false);
 
   const previewDraft = useMemo(
     () => withQuestionDefaults(previewLocale, content[previewLocale]),
     [content, previewLocale],
   );
 
-  const load = async (hash: string) => {
+  const load = useCallback(async (hash: string, opts?: { force?: boolean }) => {
+    if (loadedRef.current && !opts?.force) {
+      setIsAuthenticated(true);
+      setPasswordHash(hash);
+      return;
+    }
     setLoading(true);
     setMessage("");
     try {
@@ -113,6 +131,7 @@ export default function HomeFaqAdminPage() {
         clearCachedPasswordHash();
         setIsAuthenticated(false);
         setPasswordHash("");
+        loadedRef.current = false;
         setShowPasswordDialog(true);
         return;
       }
@@ -121,10 +140,13 @@ export default function HomeFaqAdminPage() {
         return;
       }
       const data = await response.json();
-      setContent({
+      const next = {
         en: withQuestionDefaults("en", readLocale(data.content?.en)),
         bg: withQuestionDefaults("bg", readLocale(data.content?.bg)),
-      });
+      };
+      setContent(next);
+      contentRef.current = next;
+      loadedRef.current = true;
       setIsAuthenticated(true);
       setPasswordHash(hash);
     } catch {
@@ -132,7 +154,7 @@ export default function HomeFaqAdminPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     void (async () => {
@@ -140,11 +162,14 @@ export default function HomeFaqAdminPage() {
       if (cached) await load(cached);
       else setShowPasswordDialog(true);
     })();
-  }, []);
+  }, [load]);
 
-  const save = async () => {
+  const save = async (
+    iframeDraft: ContactPreviewDraft | HomeFaqPreviewDraft | null,
+  ) => {
     const hash =
       passwordHash.trim() ||
+      getCachedPasswordHash() ||
       (await getVerifiedCachedPasswordHash()) ||
       "";
     if (!hash) {
@@ -153,13 +178,27 @@ export default function HomeFaqAdminPage() {
       return;
     }
     setPasswordHash(hash);
+
+    let nextContent = contentRef.current;
+    if (iframeDraft && isHomeFaqDraft(iframeDraft)) {
+      nextContent = {
+        ...nextContent,
+        [previewLocale]: {
+          ...nextContent[previewLocale],
+          ...iframeDraft,
+        },
+      };
+      setContent(nextContent);
+      contentRef.current = nextContent;
+    }
+
     setSaving(true);
     setMessage("");
     try {
       const response = await fetch("/api/site-content/home-faq", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ passwordHash: hash, content }),
+        body: JSON.stringify({ passwordHash: hash, content: nextContent }),
       });
       if (!response.ok) {
         const err = (await response.json().catch(() => null)) as {
@@ -182,6 +221,32 @@ export default function HomeFaqAdminPage() {
     }
   };
 
+  const handlePasswordSuccess = useCallback(
+    (hash: string) => {
+      void load(hash);
+      setShowPasswordDialog(false);
+    },
+    [load],
+  );
+
+  const handlePasswordClose = useCallback(() => {
+    setShowPasswordDialog(false);
+  }, []);
+
+  const handlePatch = useCallback(
+    (locale: "en" | "bg", patch: Record<string, string>) => {
+      setContent((prev) => {
+        const next = {
+          ...prev,
+          [locale]: { ...prev[locale], ...patch },
+        };
+        contentRef.current = next;
+        return next;
+      });
+    },
+    [],
+  );
+
   return (
     <div className="min-h-screen bg-gray-50 p-8">
       <div className="mx-auto max-w-6xl space-y-8">
@@ -203,29 +268,21 @@ export default function HomeFaqAdminPage() {
           locale={previewLocale}
           onLocaleChange={setPreviewLocale}
           draft={previewDraft}
-          onSave={() => {
-            void save();
+          onSave={(iframeDraft) => {
+            void save(iframeDraft);
           }}
           saving={saving}
           disabled={!isAuthenticated || loading}
-          onPatch={(locale, patch) => {
-            setContent((prev) => ({
-              ...prev,
-              [locale]: { ...prev[locale], ...patch },
-            }));
-          }}
+          onPatch={handlePatch}
         />
       </div>
 
       <PasswordDialog
         open={showPasswordDialog}
-        onClose={() => setShowPasswordDialog(false)}
+        onClose={handlePasswordClose}
         title="Homepage FAQ"
         description="Enter admin password to edit homepage FAQ copy."
-        onSuccess={(hash) => {
-          void load(hash);
-          setShowPasswordDialog(false);
-        }}
+        onSuccess={handlePasswordSuccess}
       />
     </div>
   );

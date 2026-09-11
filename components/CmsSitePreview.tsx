@@ -1,11 +1,13 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  CMS_PREVIEW_FLUSH,
   CMS_PREVIEW_PUSH,
   CMS_PREVIEW_READY,
   contactPreviewPath,
   homeFaqPreviewPath,
+  isCmsPreviewSnapshot,
   isTrustedCmsPreviewOrigin,
   type CmsPreviewLocale,
   type CmsPreviewPage,
@@ -16,14 +18,17 @@ import { Button } from "@/components/ui/button";
 import { getUserFeUrlOrProductionFallback } from "@/lib/user-fe-url";
 
 const FE_URL = getUserFeUrlOrProductionFallback();
+const FLUSH_TIMEOUT_MS = 1500;
+
+type PreviewDraft = HomeFaqPreviewDraft | ContactPreviewDraft;
 
 type CmsSitePreviewProps = {
   page: CmsPreviewPage;
   locale: CmsPreviewLocale;
   onLocaleChange: (locale: CmsPreviewLocale) => void;
-  draft: HomeFaqPreviewDraft | ContactPreviewDraft;
+  draft: PreviewDraft;
   onPatch: (locale: CmsPreviewLocale, patch: Record<string, string>) => void;
-  onSave: () => void;
+  onSave: (iframeDraft: PreviewDraft | null) => void;
   saving?: boolean;
   disabled?: boolean;
 };
@@ -40,6 +45,14 @@ export default function CmsSitePreview({
 }: CmsSitePreviewProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [iframeReady, setIframeReady] = useState(false);
+  const draftRef = useRef(draft);
+  draftRef.current = draft;
+  const onPatchRef = useRef(onPatch);
+  onPatchRef.current = onPatch;
+  const flushWaiterRef = useRef<{
+    resolve: (draft: PreviewDraft | null) => void;
+  } | null>(null);
+
   const path =
     page === "contact" ? contactPreviewPath(locale) : homeFaqPreviewPath(locale);
   const src = `${FE_URL}${path}`;
@@ -56,6 +69,13 @@ export default function CmsSitePreview({
         setIframeReady(true);
         return;
       }
+      if (isCmsPreviewSnapshot(data) && data.page === page) {
+        if (flushWaiterRef.current) {
+          flushWaiterRef.current.resolve(data.draft);
+          flushWaiterRef.current = null;
+        }
+        return;
+      }
       if (
         (data as { type?: string }).type === "velishe-cms-preview-patch" &&
         (data as { page?: string }).page === page &&
@@ -64,13 +84,13 @@ export default function CmsSitePreview({
       ) {
         const patch = (data as { patch?: Record<string, string> }).patch;
         const patchLocale = (data as { locale: CmsPreviewLocale }).locale;
-        if (patch) onPatch(patchLocale, patch);
+        if (patch) onPatchRef.current(patchLocale, patch);
       }
     };
 
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, [onPatch, page]);
+  }, [page]);
 
   useEffect(() => {
     if (!iframeReady) return;
@@ -81,11 +101,51 @@ export default function CmsSitePreview({
         type: CMS_PREVIEW_PUSH,
         page,
         locale,
-        draft,
+        draft: draftRef.current,
       },
       FE_URL,
     );
-  }, [iframeReady, page, locale, draft]);
+    // Intentionally omit `draft`: pushing on every keystroke/patch wipes
+    // in-progress edits in other fields. Save uses FLUSH → SNAPSHOT instead.
+  }, [iframeReady, page, locale]);
+
+  const requestFlush = useCallback((): Promise<PreviewDraft | null> => {
+    const frame = iframeRef.current?.contentWindow;
+    if (!frame || !iframeReady) return Promise.resolve(null);
+
+    return new Promise((resolve) => {
+      if (flushWaiterRef.current) {
+        flushWaiterRef.current.resolve(null);
+      }
+      const timeoutId = window.setTimeout(() => {
+        if (flushWaiterRef.current) {
+          flushWaiterRef.current.resolve(null);
+          flushWaiterRef.current = null;
+        }
+      }, FLUSH_TIMEOUT_MS);
+
+      flushWaiterRef.current = {
+        resolve: (nextDraft) => {
+          window.clearTimeout(timeoutId);
+          resolve(nextDraft);
+        },
+      };
+
+      frame.postMessage(
+        {
+          type: CMS_PREVIEW_FLUSH,
+          page,
+          locale,
+        },
+        FE_URL,
+      );
+    });
+  }, [iframeReady, locale, page]);
+
+  const handleSave = async () => {
+    const iframeDraft = await requestFlush();
+    onSave(iframeDraft);
+  };
 
   return (
     <section className="flex min-h-[70vh] flex-col gap-3 rounded-lg border bg-white p-4">
@@ -122,7 +182,9 @@ export default function CmsSitePreview({
         </a>
         <Button
           className="ml-auto"
-          onClick={onSave}
+          onClick={() => {
+            void handleSave();
+          }}
           disabled={disabled || saving}
         >
           {saving ? "Saving…" : "Save"}

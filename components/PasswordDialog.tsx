@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import {
   Dialog,
   DialogContent,
@@ -26,7 +26,7 @@ interface PasswordDialogProps {
 }
 
 const PASSWORD_HASH_CACHE_KEY = "admin_password_hash";
-const CACHE_DURATION = 30 * 60 * 1000; // 30 minutes
+const CACHE_DURATION = 8 * 60 * 60 * 1000; // 8 hours
 const MAX_PASSWORD_RETRIES = 5;
 
 export default function PasswordDialog({
@@ -42,10 +42,16 @@ export default function PasswordDialog({
   const [showPassword, setShowPassword] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
   const [lockedOut, setLockedOut] = useState(false);
+  const onSuccessRef = useRef(onSuccess);
+  const onCloseRef = useRef(onClose);
+  onSuccessRef.current = onSuccess;
+  onCloseRef.current = onClose;
 
   const remainingRetries = Math.max(0, MAX_PASSWORD_RETRIES - retryCount);
   const hasFailedAttempt = retryCount > 0;
 
+  // Only depend on `open` — parent often passes inline onSuccess/onClose, and
+  // re-running this effect would clear the password field and re-trigger load().
   useEffect(() => {
     if (!open) {
       return;
@@ -63,8 +69,8 @@ export default function PasswordDialog({
       if (cancelled || !cachedHash) {
         return;
       }
-      onSuccess(cachedHash);
-      onClose();
+      onSuccessRef.current(cachedHash);
+      onCloseRef.current();
     };
 
     void unlockWithCachedHash();
@@ -72,8 +78,7 @@ export default function PasswordDialog({
     return () => {
       cancelled = true;
     };
-  }, [open, onSuccess, onClose]);
-
+  }, [open]);
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (lockedOut) {
