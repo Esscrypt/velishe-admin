@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { asc, eq } from "drizzle-orm";
+import { asc } from "drizzle-orm";
 import { verifyAuth } from "@/lib/auth-middleware";
 import { getDb, schema } from "@/lib/db";
 import type { HomeFaqItemInsert } from "@/lib/db/schema";
