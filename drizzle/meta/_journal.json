@@ -99,6 +99,13 @@
       "when": 1789130520708,
       "tag": "0013_home_faq_items",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1789132651183,
+      "tag": "0014_home_faq_items_locale_id_pk",
+      "breakpoints": true
     }
   ]
 }

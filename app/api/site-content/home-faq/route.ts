@@ -50,33 +50,6 @@ function normalizeContent(raw: unknown): HomeFaqContentBody {
   };
 }
 
-function newItemId(): string {
-  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
-    return crypto.randomUUID();
-  }
-  return `faq-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-}
-
-/** IDs are global PKs — remint collisions so EN fallback clones cannot break BG saves. */
-function ensureUniqueItemIds(content: HomeFaqContentBody): HomeFaqContentBody {
-  const used = new Set<string>();
-  const remintLocale = (items: HomeFaqItemBody[]): HomeFaqItemBody[] =>
-    items.map((item) => {
-      if (!used.has(item.id)) {
-        used.add(item.id);
-        return item;
-      }
-      let id = newItemId();
-      while (used.has(id)) id = newItemId();
-      used.add(id);
-      return { ...item, id };
-    });
-  return {
-    en: remintLocale(content.en),
-    bg: remintLocale(content.bg),
-  };
-}
-
 function rowsToContent(
   rows: Array<typeof schema.homeFaqItems.$inferSelect>,
 ): HomeFaqContentBody {
@@ -139,7 +112,7 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    const content = ensureUniqueItemIds(normalizeContent(body.content));
+    const content = normalizeContent(body.content);
     const db = getDb();
     if (!db) {
       return NextResponse.json({ error: "Database unavailable" }, { status: 500 });

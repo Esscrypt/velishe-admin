@@ -1,4 +1,4 @@
-import { pgTable, text, integer, timestamp, serial, unique, boolean, pgEnum, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, text, integer, timestamp, serial, unique, boolean, pgEnum, jsonb, primaryKey } from "drizzle-orm/pg-core";
 
 export const boardEnum = pgEnum("board", ["mainboard", "development"]);
 export const genderEnum = pgEnum("gender", ["male", "female"]);
@@ -146,14 +146,20 @@ export const contactPageContent = pgTable("contact_page_content", {
 });
 
 /** Dynamic homepage FAQ items (one row per Q&A per locale). */
-export const homeFaqItems = pgTable("home_faq_items", {
-  id: text("id").primaryKey(),
-  locale: text("locale").notNull(),
-  sortOrder: integer("sort_order").notNull(),
-  question: text("question").notNull(),
-  answer: text("answer").notNull(),
-  updatedAt: timestamp("updated_at").notNull(),
-});
+export const homeFaqItems = pgTable(
+  "home_faq_items",
+  {
+    id: text("id").notNull(),
+    locale: text("locale").notNull(),
+    sortOrder: integer("sort_order").notNull(),
+    question: text("question").notNull(),
+    answer: text("answer").notNull(),
+    updatedAt: timestamp("updated_at").notNull(),
+  },
+  (table) => ({
+    pk: primaryKey({ columns: [table.locale, table.id] }),
+  }),
+);
 
 export type ContactPageContentRow = typeof contactPageContent.$inferSelect;
 export type ContactPageContentInsert = typeof contactPageContent.$inferInsert;
