@@ -101,6 +101,50 @@ function newItemId(): string {
   return `faq-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
+function cloneItemsWithNewIds(items: LocaleItems): LocaleItems {
+  return items.map((item) => ({ ...item, id: newItemId() }));
+}
+
+function itemIdSet(items: LocaleItems): Set<string> {
+  return new Set(items.map((item) => item.id));
+}
+
+function sharesAnyId(items: LocaleItems, other: LocaleItems): boolean {
+  if (items.length === 0 || other.length === 0) return false;
+  const ids = itemIdSet(other);
+  return items.some((item) => ids.has(item.id));
+}
+
+function itemsContentEqual(a: LocaleItems, b: LocaleItems): boolean {
+  if (a.length !== b.length) return false;
+  return a.every(
+    (item, index) =>
+      item.question === b[index]?.question && item.answer === b[index]?.answer,
+  );
+}
+
+/**
+ * Persist BG only when it is a real locale fork.
+ * EN-fallback drafts (same ids / identical copy) stay as bg: [] so public /bg/ keeps EN fallback.
+ * Edited fallback drafts get new ids before storage.
+ */
+function prepareItemsForPersist(
+  locale: "en" | "bg",
+  items: LocaleItems,
+  content: { en: LocaleItems; bg: LocaleItems },
+): LocaleItems {
+  if (locale !== "bg") return items;
+
+  const enSource = hasUsableAnswers(content.en) ? content.en : EN_DEFAULT_ITEMS;
+  if (!sharesAnyId(items, enSource) && !sharesAnyId(items, EN_DEFAULT_ITEMS)) {
+    return items;
+  }
+  if (itemsContentEqual(items, enSource)) {
+    return [];
+  }
+  return cloneItemsWithNewIds(items);
+}
+
 export default function HomeFaqAdminPage() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [showPasswordDialog, setShowPasswordDialog] = useState(false);
@@ -216,9 +260,14 @@ export default function HomeFaqAdminPage() {
 
         let nextContent = contentRef.current;
         if (iframeDraft && isHomeFaqDraft(iframeDraft)) {
+          const items = prepareItemsForPersist(
+            previewLocale,
+            iframeDraft.items,
+            nextContent,
+          );
           nextContent = {
             ...nextContent,
-            [previewLocale]: iframeDraft.items,
+            [previewLocale]: items,
           };
           setContent(nextContent);
           contentRef.current = nextContent;
@@ -298,7 +347,12 @@ export default function HomeFaqAdminPage() {
   const handleItemsPatch = useCallback(
     (locale: "en" | "bg", items: HomeFaqItemDraft[]) => {
       setContent((prev) => {
-        const next = { ...prev, [locale]: items };
+        const prepared = prepareItemsForPersist(locale, items, prev);
+        // Ignore no-op BG patches that are still the EN fallback display.
+        if (locale === "bg" && prepared.length === 0 && !hasUsableAnswers(prev.bg)) {
+          return prev;
+        }
+        const next = { ...prev, [locale]: prepared };
         contentRef.current = next;
         return next;
       });
@@ -309,8 +363,13 @@ export default function HomeFaqAdminPage() {
   const handleAddItem = useCallback(() => {
     setContent((prev) => {
       const current = resolveLocaleItems(previewLocale, prev);
+      const base =
+        previewLocale === "bg" &&
+        (sharesAnyId(current, prev.en) || sharesAnyId(current, EN_DEFAULT_ITEMS))
+          ? cloneItemsWithNewIds(current)
+          : current;
       const nextItems = [
-        ...current,
+        ...base,
         {
           id: newItemId(),
           question: "New question",

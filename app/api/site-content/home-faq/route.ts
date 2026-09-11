@@ -50,6 +50,33 @@ function normalizeContent(raw: unknown): HomeFaqContentBody {
   };
 }
 
+function newItemId(): string {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return crypto.randomUUID();
+  }
+  return `faq-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+/** IDs are global PKs — remint collisions so EN fallback clones cannot break BG saves. */
+function ensureUniqueItemIds(content: HomeFaqContentBody): HomeFaqContentBody {
+  const used = new Set<string>();
+  const remintLocale = (items: HomeFaqItemBody[]): HomeFaqItemBody[] =>
+    items.map((item) => {
+      if (!used.has(item.id)) {
+        used.add(item.id);
+        return item;
+      }
+      let id = newItemId();
+      while (used.has(id)) id = newItemId();
+      used.add(id);
+      return { ...item, id };
+    });
+  return {
+    en: remintLocale(content.en),
+    bg: remintLocale(content.bg),
+  };
+}
+
 function rowsToContent(
   rows: Array<typeof schema.homeFaqItems.$inferSelect>,
 ): HomeFaqContentBody {
@@ -112,7 +139,7 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    const content = normalizeContent(body.content);
+    const content = ensureUniqueItemIds(normalizeContent(body.content));
     const db = getDb();
     if (!db) {
       return NextResponse.json({ error: "Database unavailable" }, { status: 500 });
@@ -121,11 +148,10 @@ export async function PUT(request: NextRequest) {
     const updatedAt = new Date();
 
     await db.transaction(async (tx) => {
-      for (const locale of ["en", "bg"] as const) {
-        await tx
-          .delete(schema.homeFaqItems)
-          .where(eq(schema.homeFaqItems.locale, locale));
+      // Clear all rows first so cross-locale ID remints cannot collide mid-replace.
+      await tx.delete(schema.homeFaqItems);
 
+      for (const locale of ["en", "bg"] as const) {
         const items = content[locale];
         if (items.length === 0) continue;
 
