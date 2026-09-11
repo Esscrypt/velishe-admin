@@ -2,7 +2,7 @@ import { PRODUCTION_SITE_URL } from "@/lib/user-fe-url";
 
 export type RevalidateOptions = {
   slug?: string;
-  type?: "blog" | "models";
+  type?: "blog" | "models" | "contact" | "home_faq" | "pages";
 };
 
 export async function triggerRevalidation(

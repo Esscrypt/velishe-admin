@@ -557,6 +557,12 @@ export default function AdminPage() {
         <div className="flex justify-between items-center mb-8">
           <h1 className="text-3xl font-bold">Models Admin</h1>
           <div className="flex items-center gap-4">
+            <Link href="/contact-page">
+              <Button variant="outline">Contact page</Button>
+            </Link>
+            <Link href="/home-faq">
+              <Button variant="outline">Homepage FAQ</Button>
+            </Link>
             <Link href="/academy-wishlist">
               <Button variant="outline">
                 <List className="w-5 h-5" />

@@ -124,3 +124,61 @@ export type BlogImageInsert = typeof blogImages.$inferInsert;
 export type MailingListSubscriberRow = typeof mailingListSubscribers.$inferSelect;
 export type MailingListSubscriberInsert = typeof mailingListSubscribers.$inferInsert;
 
+/** Singleton CMS row id for typed site copy tables. */
+export const SITE_CONTENT_SINGLETON_ID = "default";
+
+/** Contact page visible copy overrides (EN + BG). Blank → public site defaults. */
+export const contactPageContent = pgTable("contact_page_content", {
+  id: text("id").primaryKey(),
+  intro1En: text("intro1_en").notNull(),
+  intro2En: text("intro2_en").notNull(),
+  intro3En: text("intro3_en").notNull(),
+  intro4En: text("intro4_en").notNull(),
+  companyHeadingEn: text("company_heading_en").notNull(),
+  officeAddressEn: text("office_address_en").notNull(),
+  intro1Bg: text("intro1_bg").notNull(),
+  intro2Bg: text("intro2_bg").notNull(),
+  intro3Bg: text("intro3_bg").notNull(),
+  intro4Bg: text("intro4_bg").notNull(),
+  companyHeadingBg: text("company_heading_bg").notNull(),
+  officeAddressBg: text("office_address_bg").notNull(),
+  updatedAt: timestamp("updated_at").notNull(),
+});
+
+/** Homepage FAQ / about copy overrides (EN + BG). Blank → public site defaults. */
+export const homeFaqContent = pgTable("home_faq_content", {
+  id: text("id").primaryKey(),
+  introEn: text("intro_en").notNull(),
+  whatWeDoEn: text("what_we_do_en").notNull(),
+  requirementsEn: text("requirements_en").notNull(),
+  academyEn: text("academy_en").notNull(),
+  bookingEn: text("booking_en").notNull(),
+  journalEn: text("journal_en").notNull(),
+  visionEn: text("vision_en").notNull(),
+  questionAboutEn: text("question_about_en").notNull(),
+  questionWhatWeDoEn: text("question_what_we_do_en").notNull(),
+  questionRequirementsEn: text("question_requirements_en").notNull(),
+  questionAcademyEn: text("question_academy_en").notNull(),
+  questionBookingEn: text("question_booking_en").notNull(),
+  questionJournalEn: text("question_journal_en").notNull(),
+  introBg: text("intro_bg").notNull(),
+  whatWeDoBg: text("what_we_do_bg").notNull(),
+  requirementsBg: text("requirements_bg").notNull(),
+  academyBg: text("academy_bg").notNull(),
+  bookingBg: text("booking_bg").notNull(),
+  journalBg: text("journal_bg").notNull(),
+  visionBg: text("vision_bg").notNull(),
+  questionAboutBg: text("question_about_bg").notNull(),
+  questionWhatWeDoBg: text("question_what_we_do_bg").notNull(),
+  questionRequirementsBg: text("question_requirements_bg").notNull(),
+  questionAcademyBg: text("question_academy_bg").notNull(),
+  questionBookingBg: text("question_booking_bg").notNull(),
+  questionJournalBg: text("question_journal_bg").notNull(),
+  updatedAt: timestamp("updated_at").notNull(),
+});
+
+export type ContactPageContentRow = typeof contactPageContent.$inferSelect;
+export type ContactPageContentInsert = typeof contactPageContent.$inferInsert;
+export type HomeFaqContentRow = typeof homeFaqContent.$inferSelect;
+export type HomeFaqContentInsert = typeof homeFaqContent.$inferInsert;
+
