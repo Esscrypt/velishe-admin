@@ -681,7 +681,7 @@ export default function BlogAdminPage() {
                     className="max-w-xs"
                   />
                   <p className="text-xs text-gray-500 mt-1">
-                    Uses your local timezone. A cron job publishes within about a minute of this time.
+                    Uses your local timezone. Due posts are published by a once-daily cron (around 09:00 UTC). Use Publish now for an exact time.
                   </p>
                 </div>
               ) : null}
